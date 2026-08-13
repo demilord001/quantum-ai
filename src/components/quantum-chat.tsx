@@ -1165,7 +1165,7 @@ function EmptyState({
         </p>
 
         <h1 className="mt-2 text-4xl font-semibold tracking-tight sm:text-6xl">
-          Good morning,{" "}
+          Whats on your mind,{" "}
           <span className="bg-gradient-to-r from-cyan-300 via-sky-300 to-violet-400 bg-clip-text text-transparent">
             {firstName}
           </span>
