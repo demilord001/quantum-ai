@@ -1,0 +1,160 @@
+@import "tailwindcss";
+
+:root {
+  --background: #020617;
+  --foreground: #f8fafc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(
+      circle at 50% -10%,
+      rgba(34, 211, 238, 0.16),
+      transparent 35%
+    ),
+    radial-gradient(
+      circle at 0% 100%,
+      rgba(139, 92, 246, 0.12),
+      transparent 35%
+    ),
+    #020617;
+
+  color: var(--foreground);
+}
+
+.quantum-grid {
+  background-image:
+    linear-gradient(
+      rgba(255,255,255,0.035) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255,255,255,0.035) 1px,
+      transparent 1px
+    );
+
+  background-size: 40px 40px;
+}
+
+.quantum-glow {
+  box-shadow:
+    0 0 30px rgba(34, 211, 238, 0.12),
+    0 0 80px rgba(139, 92, 246, 0.08);
+}
+
+.quantum-orb {
+  background:
+    radial-gradient(
+      circle,
+      rgba(255,255,255,0.95) 0%,
+      rgba(34,211,238,0.35) 25%,
+      rgba(139,92,246,0.16) 50%,
+      transparent 72%
+    );
+
+  filter: blur(2px);
+}
+
+@keyframes quantum-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+.quantum-pulse {
+  animation: quantum-pulse 4s ease-in-out infinite;
+}
+
+::selection {
+  background: rgba(34, 211, 238, 0.25);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* =========================================
+   QUANTUM SCROLLBARS
+========================================= */
+
+.quantum-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(103, 232, 249, 0.18) transparent;
+}
+
+.quantum-scroll::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.quantum-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.quantum-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.12);
+  border-radius: 999px;
+}
+
+.quantum-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(103, 232, 249, 0.28);
+}
+
+.quantum-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* =========================================
+   MARKDOWN
+========================================= */
+
+.quantum-markdown {
+  word-break: break-word;
+}
+
+.quantum-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.quantum-markdown h1:first-child,
+.quantum-markdown h2:first-child,
+.quantum-markdown h3:first-child {
+  margin-top: 0;
+}
+
+.quantum-markdown code {
+  font-variant-ligatures: none;
+}
