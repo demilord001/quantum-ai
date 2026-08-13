@@ -7,6 +7,8 @@ import { tvly } from "@/lib/tavily";
 import { shouldSearch } from "@/lib/search-decision";
 import clientPromise from "@/lib/mongodb";
 
+import { generateConversationTitle } from "@/lib/generate-title";
+
 export const runtime = "nodejs";
 
 interface ClientMessage {
@@ -445,31 +447,24 @@ for example [1] or [2].
               }
             } else {
               const title =
-                message.length >
-                60
-                  ? `${message.slice(
-                      0,
-                      60
-                    )}...`
-                  : message;
+  await generateConversationTitle({
+    userMessage: message,
+    assistantAnswer: fullAnswer,
+  });
 
               const result =
-                await db
-                  .collection(
-                    "conversations"
-                  )
-                  .insertOne({
-                    userId,
-                    title,
-                    messages: [
-                      userMessage,
-                      assistantMessage,
-                    ],
-                    createdAt:
-                      new Date(),
-                    updatedAt:
-                      new Date(),
-                  });
+  await db
+    .collection("conversations")
+    .insertOne({
+      userId,
+      title,
+      messages: [
+        userMessage,
+        assistantMessage,
+      ],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
 
               savedConversationId =
                 result.insertedId.toString();

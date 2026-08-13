@@ -6,21 +6,10 @@ import {
 import QuantumChat from "@/components/quantum-chat";
 
 export default async function ChatPage() {
-  // Ensure user is authenticated via middleware, but verify again here
-  const authSession = await auth();
-  
-  if (!authSession.userId) {
-    throw new Error("Unauthorized: User must be logged in");
-  }
+  await auth.protect();
 
-  // Get Clerk profile with error handling
-  let user = null;
-  try {
-    user = await currentUser();
-  } catch (error) {
-    console.error("Error fetching current user:", error);
-    // Fall back to using auth session data if currentUser fails
-  }
+  const user =
+    await currentUser();
 
   const firstName =
     user?.firstName ||
@@ -32,7 +21,7 @@ export default async function ChatPage() {
     "there";
 
   return (
-    <main className="h-screen overflow-hidden bg-[#020617] text-white">
+    <main className="h-screen w-full overflow-hidden bg-[#020617] text-white">
       <QuantumChat
         firstName={firstName}
       />

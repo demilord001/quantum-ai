@@ -25,11 +25,6 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { UserButton } from "@clerk/nextjs";
-
-/* =========================================================
-   TYPES
-========================================================= */
 
 interface Source {
   title: string;
@@ -74,26 +69,21 @@ interface QuantumChatProps {
   firstName: string;
 }
 
-/* =========================================================
-   MAIN COMPONENT
-========================================================= */
-
 export default function QuantumChat({
   firstName,
 }: QuantumChatProps) {
   const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState<Message[]>(
-    []
-  );
+  const [messages, setMessages] =
+    useState<Message[]>([]);
 
-  const [conversations, setConversations] = useState<
-    Conversation[]
-  >([]);
+  const [conversations, setConversations] =
+    useState<Conversation[]>([]);
 
   const [conversationId, setConversationId] =
     useState<string | null>(null);
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] =
+    useState(false);
 
   const [searchStatus, setSearchStatus] =
     useState<SearchStatus>("idle");
@@ -101,28 +91,27 @@ export default function QuantumChat({
   const [sidebarOpen, setSidebarOpen] =
     useState(false);
 
+  const [autoScroll, setAutoScroll] =
+    useState(true);
+
   const [copiedMessage, setCopiedMessage] =
     useState<number | null>(null);
 
-  const [copiedCode, setCopiedCode] = useState<
-    string | null
-  >(null);
-
-  const [autoScroll, setAutoScroll] =
-    useState(true);
+  const [copiedCode, setCopiedCode] =
+    useState<string | null>(null);
 
   const textareaRef =
     useRef<HTMLTextAreaElement | null>(null);
 
-  const messagesContainerRef =
+  const messageAreaRef =
     useRef<HTMLDivElement | null>(null);
 
   const bottomRef =
     useRef<HTMLDivElement | null>(null);
 
-  /* =======================================================
+  /* ======================================================
      LOAD CONVERSATIONS
-  ======================================================= */
+  ====================================================== */
 
   const loadConversations =
     useCallback(async () => {
@@ -130,15 +119,15 @@ export default function QuantumChat({
         const response = await fetch(
           "/api/conversations",
           {
-            method: "GET",
             cache: "no-store",
           }
         );
 
         if (!response.ok) {
-          const errorData = await response
-            .json()
-            .catch(() => null);
+          const errorData =
+            await response
+              .json()
+              .catch(() => null);
 
           console.error(
             "Failed to load conversations:",
@@ -149,7 +138,8 @@ export default function QuantumChat({
           return;
         }
 
-        const data = await response.json();
+        const data =
+          await response.json();
 
         if (Array.isArray(data)) {
           setConversations(data);
@@ -166,9 +156,9 @@ export default function QuantumChat({
     void loadConversations();
   }, [loadConversations]);
 
-  /* =======================================================
+  /* ======================================================
      AUTO SCROLL
-  ======================================================= */
+  ====================================================== */
 
   useEffect(() => {
     if (!autoScroll) {
@@ -181,31 +171,25 @@ export default function QuantumChat({
     });
   }, [messages, loading, autoScroll]);
 
-  /* =======================================================
-     DETECT MANUAL SCROLL
-  ======================================================= */
-
-  function handleMessageScroll() {
+  function handleScroll() {
     const container =
-      messagesContainerRef.current;
+      messageAreaRef.current;
 
     if (!container) {
       return;
     }
 
-    const distanceFromBottom =
+    const distance =
       container.scrollHeight -
       container.scrollTop -
       container.clientHeight;
 
-    setAutoScroll(
-      distanceFromBottom < 160
-    );
+    setAutoScroll(distance < 160);
   }
 
-  /* =======================================================
+  /* ======================================================
      NEW CHAT
-  ======================================================= */
+  ====================================================== */
 
   function startNewChat() {
     setConversationId(null);
@@ -220,9 +204,9 @@ export default function QuantumChat({
     }, 50);
   }
 
-  /* =======================================================
-     OPEN CONVERSATION
-  ======================================================= */
+  /* ======================================================
+     OPEN CHAT
+  ====================================================== */
 
   async function openConversation(
     id: string
@@ -231,15 +215,15 @@ export default function QuantumChat({
       const response = await fetch(
         `/api/conversations/${id}`,
         {
-          method: "GET",
           cache: "no-store",
         }
       );
 
       if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => null);
+        const errorData =
+          await response
+            .json()
+            .catch(() => null);
 
         throw new Error(
           errorData?.error ||
@@ -247,7 +231,8 @@ export default function QuantumChat({
         );
       }
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
       setConversationId(data._id);
       setMessages(data.messages || []);
@@ -267,9 +252,9 @@ export default function QuantumChat({
     }
   }
 
-  /* =======================================================
-     DELETE CONVERSATION
-  ======================================================= */
+  /* ======================================================
+     DELETE CHAT
+  ====================================================== */
 
   async function deleteConversation(
     id: string
@@ -283,21 +268,17 @@ export default function QuantumChat({
       );
 
       if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => null);
-
         throw new Error(
-          errorData?.error ||
-            "Unable to delete conversation."
+          "Unable to delete conversation."
         );
       }
 
-      setConversations((previous) =>
-        previous.filter(
-          (conversation) =>
-            conversation._id !== id
-        )
+      setConversations(
+        (previous) =>
+          previous.filter(
+            (conversation) =>
+              conversation._id !== id
+          )
       );
 
       if (conversationId === id) {
@@ -311,9 +292,9 @@ export default function QuantumChat({
     }
   }
 
-  /* =======================================================
+  /* ======================================================
      SEND + STREAM
-  ======================================================= */
+  ====================================================== */
 
   async function sendMessage() {
     const text = message.trim();
@@ -327,19 +308,15 @@ export default function QuantumChat({
         .toString(36)
         .slice(2)}`;
 
-    /*
-     * Important:
-     * history contains previous messages only.
-     */
-
-    const history = [...messages];
+    const history =
+      [...messages];
 
     const userMessage: Message = {
       role: "user",
       content: text,
     };
 
-    const assistantPlaceholder: Message = {
+    const assistantMessage: Message = {
       role: "assistant",
       content: "",
       sources: [],
@@ -347,11 +324,13 @@ export default function QuantumChat({
       streamId,
     };
 
-    setMessages((previous) => [
-      ...previous,
-      userMessage,
-      assistantPlaceholder,
-    ]);
+    setMessages(
+      (previous) => [
+        ...previous,
+        userMessage,
+        assistantMessage,
+      ]
+    );
 
     setMessage("");
     setLoading(true);
@@ -363,10 +342,12 @@ export default function QuantumChat({
         "/api/chat",
         {
           method: "POST",
+
           headers: {
             "Content-Type":
               "application/json",
           },
+
           body: JSON.stringify({
             message: text,
             conversationId,
@@ -384,71 +365,80 @@ export default function QuantumChat({
             await response.json();
 
           if (data?.error) {
-            errorMessage = data.error;
+            errorMessage =
+              data.error;
           }
-        } catch {
-          // Ignore non-JSON error response.
-        }
+        } catch {}
 
-        throw new Error(errorMessage);
+        throw new Error(
+          errorMessage
+        );
       }
 
       if (!response.body) {
         throw new Error(
-          "Quantum returned no streaming response."
+          "Quantum returned no stream."
         );
       }
 
       const reader =
         response.body.getReader();
 
-      const decoder = new TextDecoder();
+      const decoder =
+        new TextDecoder();
 
       let buffer = "";
 
       while (true) {
-        const { value, done } =
-          await reader.read();
+        const {
+          value,
+          done,
+        } = await reader.read();
 
         if (done) {
           break;
         }
 
-        buffer += decoder.decode(
-          value,
-          {
-            stream: true,
-          }
-        );
+        buffer +=
+          decoder.decode(
+            value,
+            {
+              stream: true,
+            }
+          );
 
-        const events = buffer.split(
-          "\n\n"
-        );
+        const events =
+          buffer.split("\n\n");
 
         buffer =
           events.pop() || "";
 
-        for (const event of events) {
-          if (!event.trim()) {
-            continue;
-          }
-
-          const dataLine = event
-            .split("\n")
-            .find((line) =>
-              line.startsWith("data:")
-            );
+        for (
+          const event of events
+        ) {
+          const dataLine =
+            event
+              .split("\n")
+              .find(
+                (line) =>
+                  line.startsWith(
+                    "data:"
+                  )
+              );
 
           if (!dataLine) {
             continue;
           }
 
-          const jsonText =
+          const payload =
             dataLine
-              .replace(/^data:\s*/, "")
+              .replace(
+                /^data:\s*/,
+                ""
+              )
               .trim();
 
-          if (!jsonText) {
+          if (!payload) {
             continue;
           }
 
@@ -459,167 +449,172 @@ export default function QuantumChat({
             sources?: Source[];
             results?: ResearchResult[];
             conversationId?: string;
-            searched?: boolean;
             error?: string;
           };
 
           try {
-            data = JSON.parse(
-              jsonText
-            );
+            data =
+              JSON.parse(payload);
           } catch {
-            console.warn(
-              "Invalid stream event:",
-              jsonText
-            );
-
             continue;
           }
 
-          /* ==============================================
-             STATUS
-          ============================================== */
-
-          if (data.type === "status") {
+          if (
+            data.type ===
+            "status"
+          ) {
             setSearchStatus(
-              data.status || "thinking"
+              data.status ||
+                "thinking"
             );
 
             continue;
           }
 
-          /* ==============================================
-             RESEARCH
-          ============================================== */
+          if (
+            data.type ===
+            "research"
+          ) {
+            setMessages(
+              (previous) =>
+                previous.map(
+                  (item) => {
+                    if (
+                      item.streamId !==
+                      streamId
+                    ) {
+                      return item;
+                    }
 
-          if (data.type === "research") {
-            const research =
-              data.results || [];
-
-            setMessages((previous) =>
-              previous.map((item) => {
-                if (
-                  item.streamId !==
-                  streamId
-                ) {
-                  return item;
-                }
-
-                return {
-                  ...item,
-                  research,
-                };
-              })
+                    return {
+                      ...item,
+                      research:
+                        data.results ||
+                        [],
+                    };
+                  }
+                )
             );
 
-            setSearchStatus("analyzing");
-
-            continue;
-          }
-
-          /* ==============================================
-             SOURCES
-          ============================================== */
-
-          if (data.type === "sources") {
-            const sources =
-              data.sources || [];
-
-            setMessages((previous) =>
-              previous.map((item) => {
-                if (
-                  item.streamId !==
-                  streamId
-                ) {
-                  return item;
-                }
-
-                return {
-                  ...item,
-                  sources,
-                };
-              })
+            setSearchStatus(
+              "analyzing"
             );
 
             continue;
           }
 
-          /* ==============================================
-             TEXT CHUNK
-          ============================================== */
+          if (
+            data.type ===
+            "sources"
+          ) {
+            setMessages(
+              (previous) =>
+                previous.map(
+                  (item) => {
+                    if (
+                      item.streamId !==
+                      streamId
+                    ) {
+                      return item;
+                    }
 
-          if (data.type === "chunk") {
+                    return {
+                      ...item,
+                      sources:
+                        data.sources ||
+                        [],
+                    };
+                  }
+                )
+            );
+
+            continue;
+          }
+
+          if (
+            data.type ===
+            "chunk"
+          ) {
             if (!data.text) {
               continue;
             }
 
-            setSearchStatus("analyzing");
+            setMessages(
+              (previous) =>
+                previous.map(
+                  (item) => {
+                    if (
+                      item.streamId !==
+                      streamId
+                    ) {
+                      return item;
+                    }
 
-            setMessages((previous) =>
-              previous.map((item) => {
-                if (
-                  item.streamId !==
-                  streamId
-                ) {
-                  return item;
-                }
+                    return {
+                      ...item,
+                      content:
+                        item.content +
+                        data.text,
+                    };
+                  }
+                )
+            );
 
-                return {
-                  ...item,
-                  content:
-                    item.content +
-                    data.text,
-                };
-              })
+            setSearchStatus(
+              "analyzing"
             );
 
             continue;
           }
 
-          /* ==============================================
-             DONE
-          ============================================== */
-
-          if (data.type === "done") {
+          if (
+            data.type ===
+            "done"
+          ) {
             setConversationId(
               data.conversationId ||
                 null
             );
 
-            setSearchStatus("done");
+            setMessages(
+              (previous) =>
+                previous.map(
+                  (item) => {
+                    if (
+                      item.streamId !==
+                      streamId
+                    ) {
+                      return item;
+                    }
 
-            setMessages((previous) =>
-              previous.map((item) => {
-                if (
-                  item.streamId !==
-                  streamId
-                ) {
-                  return item;
-                }
-
-                return {
-                  role: item.role,
-                  content: item.content,
-                  sources:
-                    item.sources ||
-                    data.sources ||
-                    [],
-                  research:
-                    item.research || [],
-                };
-              })
+                    return {
+                      role:
+                        item.role,
+                      content:
+                        item.content,
+                      sources:
+                        item.sources ||
+                        data.sources ||
+                        [],
+                      research:
+                        item.research ||
+                        [],
+                    };
+                  }
+                )
             );
+
+            setSearchStatus("done");
 
             await loadConversations();
 
             continue;
           }
 
-          /* ==============================================
-             SERVER ERROR
-          ============================================== */
-
-          if (data.type === "error") {
+          if (
+            data.type ===
+            "error"
+          ) {
             throw new Error(
               data.error ||
                 "Quantum stream failed."
@@ -627,37 +622,40 @@ export default function QuantumChat({
           }
         }
       }
-
-      decoder.decode();
     } catch (error) {
       console.error(
         "Quantum frontend error:",
         error
       );
 
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Something went wrong.";
+      setMessages(
+        (previous) =>
+          previous.map(
+            (item) => {
+              if (
+                item.streamId !==
+                streamId
+              ) {
+                return item;
+              }
 
-      setMessages((previous) =>
-        previous.map((item) => {
-          if (
-            item.streamId !==
-            streamId
-          ) {
-            return item;
-          }
-
-          return {
-            ...item,
-            content:
-              `**Quantum error**\n\n${errorMessage}`,
-          };
-        })
+              return {
+                ...item,
+                content:
+                  `**Quantum error**\n\n${
+                    error instanceof
+                    Error
+                      ? error.message
+                      : "Something went wrong."
+                  }`,
+              };
+            }
+          )
       );
 
-      setSearchStatus("error");
+      setSearchStatus(
+        "error"
+      );
     } finally {
       setLoading(false);
 
@@ -667,9 +665,9 @@ export default function QuantumChat({
     }
   }
 
-  /* =======================================================
-     KEYBOARD
-  ======================================================= */
+  /* ======================================================
+     ENTER
+  ====================================================== */
 
   function handleKeyDown(
     event: React.KeyboardEvent<HTMLTextAreaElement>
@@ -684,9 +682,9 @@ export default function QuantumChat({
     }
   }
 
-  /* =======================================================
-     COPY ANSWER
-  ======================================================= */
+  /* ======================================================
+     COPY
+  ====================================================== */
 
   async function copyAnswer(
     content: string,
@@ -702,17 +700,8 @@ export default function QuantumChat({
       setTimeout(() => {
         setCopiedMessage(null);
       }, 1500);
-    } catch (error) {
-      console.error(
-        "Copy answer failed:",
-        error
-      );
-    }
+    } catch {}
   }
-
-  /* =======================================================
-     COPY CODE
-  ======================================================= */
 
   async function copyCode(
     code: string,
@@ -728,66 +717,48 @@ export default function QuantumChat({
       setTimeout(() => {
         setCopiedCode(null);
       }, 1500);
-    } catch (error) {
-      console.error(
-        "Copy code failed:",
-        error
-      );
-    }
+    } catch {}
   }
 
-  /* =======================================================
-     RENDER
-  ======================================================= */
+  /* ======================================================
+     UI
+  ====================================================== */
 
   return (
-    <div className="relative flex h-full min-h-0 flex-1 overflow-hidden bg-[#020617] text-white">
+    <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-[#020617] text-white">
 
-      {/* ===================================================
-          FUTURISTIC BACKGROUND
-      =================================================== */}
+      {/* ================================================
+          BACKGROUND
+      ================================================ */}
 
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        {/* Cyan Aurora */}
+        <div className="absolute left-[30%] top-[-300px] h-[680px] w-[680px] rounded-full bg-cyan-400/[0.05] blur-[170px]" />
 
-        <div className="absolute left-[25%] top-[-280px] h-[680px] w-[680px] rounded-full bg-cyan-400/[0.055] blur-[170px]" />
-
-        {/* Violet Aurora */}
-
-        <div className="absolute bottom-[-260px] right-[-120px] h-[620px] w-[620px] rounded-full bg-violet-500/[0.05] blur-[170px]" />
-
-        {/* Blue Accent */}
-
-        <div className="absolute left-[-220px] top-[40%] h-[500px] w-[500px] rounded-full bg-sky-400/[0.03] blur-[160px]" />
-
-        {/* Grid */}
+        <div className="absolute bottom-[-260px] right-[-120px] h-[620px] w-[620px] rounded-full bg-violet-500/[0.045] blur-[170px]" />
 
         <div
-          className="absolute inset-0 opacity-25"
+          className="absolute inset-0 opacity-20"
           style={{
             backgroundImage: `
               linear-gradient(
-                rgba(255,255,255,0.022) 1px,
+                rgba(255,255,255,0.025) 1px,
                 transparent 1px
               ),
               linear-gradient(
                 90deg,
-                rgba(255,255,255,0.022) 1px,
+                rgba(255,255,255,0.025) 1px,
                 transparent 1px
               )
             `,
-            backgroundSize: "48px 48px",
+            backgroundSize:
+              "48px 48px",
           }}
         />
-
-        {/* Center vignette */}
-
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_20%,rgba(2,6,23,0.5)_100%)]" />
       </div>
 
-      {/* ===================================================
-          MOBILE SIDEBAR BACKDROP
-      =================================================== */}
+      {/* ================================================
+          MOBILE BACKDROP
+      ================================================ */}
 
       {sidebarOpen && (
         <button
@@ -796,174 +767,172 @@ export default function QuantumChat({
           onClick={() =>
             setSidebarOpen(false)
           }
-          className="absolute inset-0 z-40 bg-black/65 backdrop-blur-sm lg:hidden"
+          className="absolute inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
         />
       )}
 
-      {/* ===================================================
+      {/* ================================================
           SIDEBAR
-      =================================================== */}
+      ================================================ */}
 
       <aside
-        className={`absolute inset-y-0 left-0 z-50 flex w-[285px] flex-col border-r border-white/[0.07] bg-[#030712]/96 backdrop-blur-2xl transition-transform duration-300 lg:relative lg:translate-x-0 ${
+        className={`absolute inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-white/[0.07] bg-[#030712]/95 backdrop-blur-2xl transition-transform duration-300 lg:relative lg:translate-x-0 ${
           sidebarOpen
             ? "translate-x-0"
             : "-translate-x-full lg:translate-x-0"
         }`}
       >
-        {/* BRAND */}
+        <div className="flex h-full flex-col">
 
-        <div className="flex h-[78px] shrink-0 items-center gap-3 px-5">
-          <div className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/[0.06] shadow-[0_0_30px_rgba(34,211,238,0.1)]">
-            <div className="absolute inset-0 rounded-xl bg-cyan-300/[0.04] blur-md" />
+          {/* LOGO */}
 
-            <Sparkles className="relative h-5 w-5 text-cyan-300" />
-
-            <div className="absolute inset-0 rounded-xl border border-cyan-300/10 animate-pulse" />
-          </div>
-
-          <div>
-            <p className="text-sm font-semibold tracking-[0.16em]">
-              QUANTUM
-            </p>
-
-            <p className="mt-0.5 text-[9px] tracking-[0.36em] text-slate-600">
-              INTELLIGENCE
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() =>
-              setSidebarOpen(false)
-            }
-            className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 hover:bg-white/[0.04] hover:text-slate-300 lg:hidden"
-            aria-label="Close sidebar"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        {/* NEW CHAT */}
-
-        <div className="shrink-0 px-4">
-          <button
-            type="button"
-            onClick={startNewChat}
-            className="group flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm text-slate-300 transition duration-200 hover:border-cyan-300/20 hover:bg-white/[0.06]"
-          >
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.06]">
-              <Plus className="h-4 w-4 text-cyan-300 transition group-hover:scale-110" />
-            </span>
-
-            New Chat
-          </button>
-        </div>
-
-        {/* SEARCH */}
-
-        <div className="shrink-0 px-4 pt-5">
-          <div className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 transition focus-within:border-cyan-300/15 focus-within:bg-white/[0.035]">
-            <Search className="h-4 w-4 shrink-0 text-slate-600" />
-
-            <input
-              type="text"
-              placeholder="Search chats"
-              className="min-w-0 flex-1 bg-transparent text-sm text-slate-300 outline-none placeholder:text-slate-600"
-            />
-          </div>
-        </div>
-
-        {/* CONVERSATION HISTORY */}
-
-        <div className="quantum-scroll mt-7 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4">
-          <div className="mb-3 flex items-center gap-2 px-2 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-600">
-            <History className="h-3.5 w-3.5" />
-            Recent
-          </div>
-
-          {conversations.length === 0 ? (
-            <p className="px-2 pb-4 text-xs text-slate-700">
-              No chats yet.
-            </p>
-          ) : (
-            <div className="space-y-1 pb-4">
-              {conversations.map(
-                (conversation) => (
-                  <div
-                    key={
-                      conversation._id
-                    }
-                    className={`group flex items-center rounded-xl transition ${
-                      conversationId ===
-                      conversation._id
-                        ? "bg-white/[0.05]"
-                        : "hover:bg-white/[0.035]"
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void openConversation(
-                          conversation._id
-                        )
-                      }
-                      className="min-w-0 flex-1 truncate px-3 py-2.5 text-left text-sm text-slate-500 transition hover:text-slate-300"
-                    >
-                      {
-                        conversation.title
-                      }
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void deleteConversation(
-                          conversation._id
-                        )
-                      }
-                      className="mr-2 hidden h-7 w-7 items-center justify-center rounded-lg text-slate-700 transition hover:bg-red-400/10 hover:text-red-300 group-hover:flex"
-                      aria-label="Delete conversation"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )
-              )}
+          <div className="flex h-[76px] shrink-0 items-center gap-3 px-5">
+            <div className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-cyan-300/15 bg-cyan-300/[0.06]">
+              <Sparkles className="h-4 w-4 text-cyan-300" />
             </div>
-          )}
-        </div>
 
-        {/* SETTINGS */}
+            <div>
+              <p className="text-sm font-semibold tracking-[0.15em]">
+                QUANTUM
+              </p>
 
-        <div className="shrink-0 border-t border-white/[0.06] p-4">
-          <button
-            type="button"
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-white/[0.035] hover:text-slate-400"
-          >
-            <UserButton />
-            SETTINGS
-          </button>
+              <p className="text-[8px] tracking-[0.34em] text-slate-600">
+                INTELLIGENCE
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                setSidebarOpen(false)
+              }
+              className="ml-auto text-slate-600 lg:hidden"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* NEW CHAT */}
+
+          <div className="shrink-0 px-4">
+            <button
+              type="button"
+              onClick={
+                startNewChat
+              }
+              className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm text-slate-300 transition hover:border-cyan-300/20 hover:bg-white/[0.06]"
+            >
+              <Plus className="h-4 w-4 text-cyan-300" />
+
+              New chat
+            </button>
+          </div>
+
+          {/* SEARCH */}
+
+          <div className="shrink-0 px-4 pt-5">
+            <div className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
+              <Search className="h-4 w-4 text-slate-600" />
+
+              <input
+                type="text"
+                placeholder="Search chats"
+                className="min-w-0 flex-1 bg-transparent text-sm text-slate-300 outline-none placeholder:text-slate-600"
+              />
+            </div>
+          </div>
+
+          {/* HISTORY */}
+
+          <div className="quantum-scroll mt-7 min-h-0 flex-1 overflow-y-auto px-4">
+            <div className="mb-3 flex items-center gap-2 px-2 text-[10px] uppercase tracking-[0.18em] text-slate-600">
+              <History className="h-3.5 w-3.5" />
+              Recent
+            </div>
+
+            {conversations.length ===
+            0 ? (
+              <p className="px-2 text-xs text-slate-700">
+                No conversations yet.
+              </p>
+            ) : (
+              <div className="space-y-1 pb-5">
+                {conversations.map(
+                  (conversation) => (
+                    <div
+                      key={
+                        conversation._id
+                      }
+                      className={`group flex items-center rounded-xl ${
+                        conversationId ===
+                        conversation._id
+                          ? "bg-white/[0.05]"
+                          : "hover:bg-white/[0.03]"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void openConversation(
+                            conversation._id
+                          )
+                        }
+                        className="min-w-0 flex-1 truncate px-3 py-2.5 text-left text-sm text-slate-500 hover:text-slate-300"
+                      >
+                        {
+                          conversation.title
+                        }
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void deleteConversation(
+                            conversation._id
+                          )
+                        }
+                        className="mr-2 hidden h-7 w-7 items-center justify-center rounded-lg text-slate-700 hover:bg-red-400/10 hover:text-red-300 group-hover:flex"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* SETTINGS */}
+
+          <div className="shrink-0 border-t border-white/[0.06] p-4">
+            <button
+              type="button"
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 hover:bg-white/[0.035]"
+            >
+              <Settings className="h-4 w-4" />
+
+              Settings
+            </button>
+          </div>
         </div>
       </aside>
 
-      {/* ===================================================
-          MAIN CONTENT
-      =================================================== */}
+      {/* ================================================
+          MAIN
+      ================================================ */}
 
       <section className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 
         {/* HEADER */}
 
-        <header className="flex h-[72px] shrink-0 items-center justify-between border-b border-white/[0.05] bg-black/10 px-4 backdrop-blur-2xl sm:px-6">
+        <header className="flex h-[70px] shrink-0 items-center justify-between border-b border-white/[0.05] bg-black/10 px-4 backdrop-blur-2xl sm:px-6">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() =>
                 setSidebarOpen(true)
               }
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-slate-500 transition hover:text-slate-300 lg:hidden"
-              aria-label="Open sidebar"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-slate-500 lg:hidden"
             >
               <Menu className="h-4 w-4" />
             </button>
@@ -973,8 +942,8 @@ export default function QuantumChat({
                 Quantum AI
               </p>
 
-              <div className="mt-0.5 flex items-center gap-2">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.8)]" />
+              <div className="mt-1 flex items-center gap-2">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300" />
 
                 <span className="text-[10px] text-slate-600">
                   Live intelligence
@@ -983,30 +952,38 @@ export default function QuantumChat({
             </div>
           </div>
 
-          <div className="hidden items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.025] px-3 py-1.5 text-[10px] tracking-wide text-slate-600 sm:flex">
-            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
-
-            Powered By DemLabs
+          <div className="hidden text-[10px] tracking-[0.15em] text-slate-700 sm:block">
+            QUANTUM
           </div>
         </header>
 
-        {/* =================================================
-            SCROLLABLE MESSAGE AREA
-        ================================================= */}
+        {/* ================================================
+            CENTERED MESSAGE AREA
+        ================================================ */}
 
         <div
-          ref={messagesContainerRef}
-          onScroll={handleMessageScroll}
+          ref={
+            messageAreaRef
+          }
+          onScroll={
+            handleScroll
+          }
           className="quantum-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-smooth"
         >
-          {messages.length === 0 ? (
+          {messages.length ===
+          0 ? (
             <EmptyState
-              firstName={firstName}
-              setMessage={setMessage}
+              firstName={
+                firstName
+              }
+              setMessage={
+                setMessage
+              }
             />
           ) : (
-            <div className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 sm:py-10">
-              <div className="space-y-10 pb-10">
+            <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6 sm:py-12">
+              <div className="space-y-10 pb-12">
+
                 {messages.map(
                   (
                     item,
@@ -1034,51 +1011,52 @@ export default function QuantumChat({
 
                 <div
                   ref={bottomRef}
-                  className="h-2"
+                  className="h-4"
                 />
               </div>
             </div>
           )}
         </div>
 
-        {/* =================================================
-            COMPACT FIXED COMPOSER
-        ================================================= */}
+        {/* ================================================
+            CENTERED COMPOSER
+        ================================================ */}
 
-        <div className="shrink-0 border-t border-white/[0.05] bg-[#020617]/82 px-4 pb-4 pt-3 backdrop-blur-2xl sm:px-6">
-          <div className="mx-auto max-w-4xl">
-            <div className="relative overflow-hidden rounded-[24px] border border-white/[0.10] bg-white/[0.035] p-2 shadow-[0_0_70px_rgba(34,211,238,0.035)] backdrop-blur-2xl transition-all duration-200 focus-within:border-cyan-300/20 focus-within:shadow-[0_0_90px_rgba(34,211,238,0.075)]">
+        <div className="shrink-0 border-t border-white/[0.05] bg-[#020617]/85 px-4 pb-4 pt-3 backdrop-blur-2xl sm:px-6">
+          <div className="mx-auto w-full max-w-3xl">
 
-              {/* Neon line */}
+            <div className="relative overflow-hidden rounded-[24px] border border-white/[0.10] bg-white/[0.035] p-2 shadow-[0_0_70px_rgba(34,211,238,0.035)] backdrop-blur-2xl focus-within:border-cyan-300/20 focus-within:shadow-[0_0_90px_rgba(34,211,238,0.07)]">
 
               <div className="pointer-events-none absolute left-1/2 top-0 h-px w-2/3 -translate-x-1/2 bg-gradient-to-r from-transparent via-cyan-300/40 to-transparent" />
 
-              {/* COMPACT TEXTAREA */}
-
               <textarea
-                ref={textareaRef}
-                value={message}
+                ref={
+                  textareaRef
+                }
+                value={
+                  message
+                }
                 onChange={(event) =>
                   setMessage(
-                    event.target.value
+                    event.target
+                      .value
                   )
                 }
                 onKeyDown={
                   handleKeyDown
                 }
-                disabled={loading}
+                disabled={
+                  loading
+                }
                 rows={1}
                 placeholder="Ask Quantum anything..."
-                className="min-h-[48px] max-h-[140px] w-full resize-none overflow-y-auto bg-transparent px-4 py-3 text-[15px] leading-6 text-slate-200 outline-none placeholder:text-slate-600 disabled:opacity-50"
+                className="min-h-[48px] max-h-[140px] w-full resize-none overflow-y-auto bg-transparent px-4 py-3 text-[15px] leading-6 text-slate-200 outline-none placeholder:text-slate-600"
               />
 
-              {/* CONTROLS */}
-
-              <div className="flex items-center justify-between px-2 pt-1 pb-1">
+              <div className="flex items-center justify-between px-2 pb-1 pt-1">
                 <div className="flex items-center gap-2">
-                  <div className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/10 bg-cyan-300/[0.025] px-3 py-2 text-[11px] text-slate-500">
+                  <div className="flex items-center gap-2 rounded-xl border border-cyan-300/10 bg-cyan-300/[0.025] px-3 py-2 text-[11px] text-slate-500">
                     <Globe2 className="h-3.5 w-3.5 text-cyan-300" />
-
                     Live web
                   </div>
 
@@ -1106,7 +1084,7 @@ export default function QuantumChat({
                     loading ||
                     !message.trim()
                   }
-                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-black shadow-[0_0_30px_rgba(255,255,255,0.08)] transition hover:scale-105 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100"
+                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-black transition hover:scale-105 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100"
                   aria-label="Send message"
                 >
                   {loading ? (
@@ -1143,20 +1121,18 @@ function EmptyState({
   ) => void;
 }) {
   return (
-    <div className="flex min-h-full w-full items-center">
-      <div className="mx-auto w-full max-w-5xl px-5 py-14 sm:px-8">
+    <div className="flex min-h-full w-full items-center justify-center">
+      <div className="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6">
 
-        {/* CORE */}
+        <div className="mb-8">
+          <div className="relative flex h-16 w-16 items-center justify-center">
+            <div className="absolute inset-0 rounded-full bg-cyan-400/10 blur-2xl" />
 
-        <div className="relative mb-8 flex h-20 w-20 items-center justify-center">
-          <div className="absolute inset-0 rounded-full bg-cyan-400/10 blur-2xl" />
+            <div className="absolute h-16 w-16 rounded-full border border-cyan-300/15 animate-[spin_12s_linear_infinite]" />
 
-          <div className="absolute h-16 w-16 rounded-full border border-cyan-300/20 animate-[spin_10s_linear_infinite]" />
-
-          <div className="absolute h-20 w-20 rounded-full border border-violet-400/10 animate-[spin_16s_linear_infinite_reverse]" />
-
-          <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.12] to-violet-500/[0.12] shadow-[0_0_50px_rgba(34,211,238,0.12)]">
-            <Sparkles className="h-6 w-6 text-cyan-200" />
+            <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.10] to-violet-500/[0.10] shadow-[0_0_50px_rgba(34,211,238,0.10)]">
+              <Sparkles className="h-6 w-6 text-cyan-200" />
+            </div>
           </div>
         </div>
 
@@ -1164,23 +1140,21 @@ function EmptyState({
           Real-time AI research assistant
         </p>
 
-        <h1 className="mt-2 text-4xl font-semibold tracking-tight sm:text-6xl">
+        <h1 className="mt-2 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
           Good morning,{" "}
           <span className="bg-gradient-to-r from-cyan-300 via-sky-300 to-violet-400 bg-clip-text text-transparent">
             {firstName}
           </span>
         </h1>
 
-        <p className="mt-5 max-w-2xl text-base leading-7 text-slate-500 sm:text-lg">
+        <p className="mt-5 max-w-2xl text-base leading-7 text-slate-500">
           Search the live web, explore complex
-          information, and get synthesized answers
-          without juggling dozens of browser tabs.
+          questions, and get a synthesized answer
+          without leaving your workspace.
         </p>
 
-        {/* PROMPTS */}
-
-        <div className="mt-10 grid max-w-4xl gap-3 sm:grid-cols-2">
-          <Prompt
+        <div className="mt-9 grid gap-3 sm:grid-cols-2">
+          <PromptCard
             label="LIVE RESEARCH"
             text="What's happening in AI today?"
             onClick={() =>
@@ -1190,7 +1164,7 @@ function EmptyState({
             }
           />
 
-          <Prompt
+          <PromptCard
             label="WEB ANALYSIS"
             text="Research the latest web development trends."
             onClick={() =>
@@ -1200,7 +1174,7 @@ function EmptyState({
             }
           />
 
-          <Prompt
+          <PromptCard
             label="LEARN"
             text="Explain quantum computing simply."
             onClick={() =>
@@ -1210,7 +1184,7 @@ function EmptyState({
             }
           />
 
-          <Prompt
+          <PromptCard
             label="COMPARE"
             text="Compare Next.js with other frameworks."
             onClick={() =>
@@ -1222,6 +1196,40 @@ function EmptyState({
         </div>
       </div>
     </div>
+  );
+}
+
+/* =========================================================
+   PROMPT CARD
+========================================================= */
+
+function PromptCard({
+  label,
+  text,
+  onClick,
+}: {
+  label: string;
+  text: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 text-left transition hover:-translate-y-0.5 hover:border-cyan-300/15 hover:bg-white/[0.04]"
+    >
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-[9px] font-semibold tracking-[0.2em] text-slate-700 group-hover:text-cyan-300/60">
+          {label}
+        </span>
+
+        <Sparkles className="h-3.5 w-3.5 text-slate-700 group-hover:text-cyan-300" />
+      </div>
+
+      <p className="text-sm leading-6 text-slate-400 group-hover:text-slate-200">
+        {text}
+      </p>
+    </button>
   );
 }
 
@@ -1250,47 +1258,37 @@ function MessageBubble({
     codeId: string
   ) => void;
 }) {
-  /* USER MESSAGE */
-
-  if (item.role === "user") {
+  if (
+    item.role === "user"
+  ) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[88%] rounded-2xl rounded-br-md border border-white/[0.08] bg-white/[0.055] px-5 py-3.5 text-[14px] leading-7 text-slate-200 shadow-[0_12px_40px_rgba(0,0,0,0.12)] sm:px-6">
+        <div className="max-w-[82%] rounded-2xl rounded-br-md bg-white/[0.07] px-5 py-3.5 text-[15px] leading-7 text-slate-200">
           {item.content}
         </div>
       </div>
     );
   }
 
-  /* ASSISTANT */
-
   return (
     <div className="w-full">
-      {/* IDENTITY */}
-
       <div className="mb-3 flex items-center gap-2">
-        <div className="relative flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-300/15 bg-cyan-300/[0.07]">
-          <div className="absolute inset-0 rounded-xl bg-cyan-300/10 blur-md" />
-
-          <Sparkles className="relative h-4 w-4 text-cyan-300" />
+        <div className="relative flex h-7 w-7 items-center justify-center rounded-lg border border-cyan-300/15 bg-cyan-300/[0.07]">
+          <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold tracking-[0.15em] text-cyan-300">
-            QUANTUM
-          </span>
+        <span className="text-xs font-semibold tracking-[0.15em] text-cyan-300">
+          QUANTUM
+        </span>
 
-          {item.research &&
-            item.research.length >
-              0 && (
-              <span className="rounded-full border border-cyan-300/10 bg-cyan-300/[0.025] px-2 py-1 text-[9px] text-cyan-300/60">
-                WEB RESEARCH
-              </span>
-            )}
-        </div>
+        {item.research &&
+          item.research.length >
+            0 && (
+            <span className="rounded-full border border-cyan-300/10 px-2 py-0.5 text-[9px] text-cyan-300/60">
+              WEB RESEARCH
+            </span>
+          )}
       </div>
-
-      {/* RESEARCH */}
 
       {item.research &&
         item.research.length >
@@ -1302,109 +1300,183 @@ function MessageBubble({
           />
         )}
 
-      {/* ANSWER */}
+      <div>
+        {item.content ? (
+          <FormattedAnswer
+            content={
+              item.content
+            }
+            copiedCode={
+              copiedCode
+            }
+            copyCode={
+              copyCode
+            }
+          />
+        ) : (
+          <SearchProgress
+            status="analyzing"
+          />
+        )}
+      </div>
 
-      <div className="overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.025] shadow-[0_18px_70px_rgba(0,0,0,0.12)]">
+      {item.sources &&
+        item.sources.length >
+          0 && (
+          <div className="mt-7">
+            <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-600">
+              Sources
+            </div>
 
-        <div className="p-5 sm:p-6">
-          {item.content ? (
-            <FormattedAnswer
-              content={
-                item.content
-              }
-              copiedCode={
-                copiedCode
-              }
-              copyCode={
-                copyCode
-              }
-            />
-          ) : (
-            <SearchProgress
-              status="analyzing"
-            />
-          )}
+            <div className="grid gap-2 sm:grid-cols-2">
+              {item.sources.map(
+                (
+                  source,
+                  sourceIndex
+                ) => (
+                  <a
+                    key={`${source.url}-${sourceIndex}`}
+                    href={
+                      source.url
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 transition hover:border-cyan-300/15 hover:bg-white/[0.035]"
+                  >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-300/[0.04]">
+                      <Globe2 className="h-3.5 w-3.5 text-cyan-300/70" />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium text-slate-400 group-hover:text-white">
+                        {
+                          source.title
+                        }
+                      </p>
+
+                      <p className="truncate text-[10px] text-slate-700">
+                        {
+                          source.url
+                        }
+                      </p>
+                    </div>
+
+                    <ExternalLink className="h-3.5 w-3.5 text-slate-700 group-hover:text-cyan-300" />
+                  </a>
+                )
+              )}
+            </div>
+          </div>
+        )}
+
+      {item.content && (
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() =>
+              copyAnswer(
+                item.content,
+                index
+              )
+            }
+            className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 hover:bg-white/[0.04] hover:text-slate-400"
+          >
+            {copiedMessage ===
+            index ? (
+              <>
+                <Check className="h-3.5 w-3.5" />
+                Copied
+              </>
+            ) : (
+              <>
+                <Copy className="h-3.5 w-3.5" />
+                Copy
+              </>
+            )}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
+   RESEARCH PANEL
+========================================================= */
+
+function ResearchPanel({
+  results,
+}: {
+  results: ResearchResult[];
+}) {
+  return (
+    <div className="mb-5 rounded-2xl border border-cyan-300/[0.10] bg-cyan-300/[0.025]">
+      <div className="flex items-center justify-between border-b border-white/[0.05] px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Globe2 className="h-4 w-4 text-cyan-300" />
+
+          <div>
+            <p className="text-xs font-medium text-cyan-200">
+              Live web research
+            </p>
+
+            <p className="text-[10px] text-slate-700">
+              Current sources found by Quantum
+            </p>
+          </div>
         </div>
 
-        {/* SOURCES */}
+        <span className="rounded-full border border-white/[0.06] px-2.5 py-1 text-[10px] text-slate-600">
+          {results.length}
+        </span>
+      </div>
 
-        {item.sources &&
-          item.sources.length >
-            0 && (
-            <div className="border-t border-white/[0.07] px-5 py-5 sm:px-6">
-              <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-600">
-                Sources
-              </div>
-
-              <div className="grid gap-2 sm:grid-cols-2">
-                {item.sources.map(
-                  (
-                    source,
-                    sourceIndex
-                  ) => (
-                    <a
-                      key={`${source.url}-${sourceIndex}`}
-                      href={
-                        source.url
-                      }
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group flex items-center gap-3 rounded-xl border border-white/[0.06] bg-black/20 p-3 transition hover:border-cyan-300/15 hover:bg-white/[0.03]"
-                    >
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.04]">
-                        <Globe2 className="h-3.5 w-3.5 text-cyan-300/80" />
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-medium text-slate-400 group-hover:text-white">
-                          {
-                            source.title
-                          }
-                        </p>
-
-                        <p className="mt-0.5 truncate text-[10px] text-slate-700">
-                          {
-                            source.url
-                          }
-                        </p>
-                      </div>
-
-                      <ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-700 group-hover:text-cyan-300" />
-                    </a>
-                  )
-                )}
-              </div>
-            </div>
-          )}
-
-        {/* COPY ANSWER */}
-
-        {item.content && (
-          <div className="flex justify-end border-t border-white/[0.05] px-5 py-2 sm:px-6">
-            <button
-              type="button"
-              onClick={() =>
-                copyAnswer(
-                  item.content,
-                  index
-                )
+      <div className="grid gap-2 p-3 sm:grid-cols-2">
+        {results.map(
+          (
+            result,
+            index
+          ) => (
+            <a
+              key={`${result.url}-${index}`}
+              href={
+                result.url
               }
-              className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-slate-700 transition hover:bg-white/[0.04] hover:text-slate-400"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group rounded-xl border border-white/[0.06] bg-black/20 p-3 transition hover:border-cyan-300/15 hover:bg-white/[0.03]"
             >
-              {copiedMessage ===
-              index ? (
-                <>
-                  <Check className="h-3.5 w-3.5" />
-                  Copied
-                </>
-              ) : (
-                <>
-                  <Copy className="h-3.5 w-3.5" />
-                  Copy
-                </>
-              )}
-            </button>
-          </div>
+              <div className="flex gap-3">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-[10px] font-semibold text-cyan-300">
+                  {index + 1}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="line-clamp-2 text-xs font-medium leading-5 text-slate-300 group-hover:text-white">
+                    {
+                      result.title
+                    }
+                  </p>
+
+                  {result.content && (
+                    <p className="mt-1 line-clamp-2 text-[10px] leading-5 text-slate-600">
+                      {
+                        result.content
+                      }
+                    </p>
+                  )}
+
+                  <p className="mt-2 truncate text-[9px] text-slate-700">
+                    {getHostname(
+                      result.url
+                    )}
+                  </p>
+                </div>
+
+                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-700 group-hover:text-cyan-300" />
+              </div>
+            </a>
+          )
         )}
       </div>
     </div>
@@ -1412,7 +1484,7 @@ function MessageBubble({
 }
 
 /* =========================================================
-   FORMATTED ANSWER
+   FORMATTED MARKDOWN
 ========================================================= */
 
 function FormattedAnswer({
@@ -1428,52 +1500,13 @@ function FormattedAnswer({
   ) => void;
 }) {
   return (
-    <div
-      className="quantum-markdown overflow-x-auto text-[15px] leading-7 text-slate-300
-        prose
-        prose-invert
-        max-w-none
-
-        prose-headings:font-semibold
-        prose-headings:text-white
-
-        prose-p:text-slate-300
-
-        prose-strong:text-white
-
-        prose-a:text-cyan-300
-
-        prose-li:text-slate-300
-
-        prose-blockquote:border-cyan-300/30
-        prose-blockquote:text-slate-500
-
-        prose-hr:border-white/10
-
-        prose-table:text-slate-300
-
-        prose-th:border-white/[0.07]
-        prose-th:bg-white/[0.04]
-        prose-th:text-slate-200
-
-        prose-td:border-white/[0.06]
-        prose-td:text-slate-400
-
-        prose-pre:bg-transparent
-      "
-    >
+    <div className="quantum-markdown overflow-x-auto text-[15px] leading-7 text-slate-300">
       <ReactMarkdown
         remarkPlugins={[
           remarkGfm,
         ]}
         components={{
-          /* ============================================
-             CODE
-          ============================================ */
-
-          pre({
-            children,
-          }) {
+          pre({ children }) {
             const child =
               children as React.ReactElement<{
                 className?: string;
@@ -1490,11 +1523,13 @@ function FormattedAnswer({
               );
 
             const language =
-              match?.[1] || "code";
+              match?.[1] ||
+              "code";
 
             const code =
               String(
-                child?.props?.children ||
+                child?.props
+                  ?.children ||
                   ""
               ).replace(
                 /\n$/,
@@ -1508,14 +1543,14 @@ function FormattedAnswer({
               )}`;
 
             return (
-              <div className="my-6 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#030712] shadow-[0_15px_50px_rgba(0,0,0,0.2)]">
+              <div className="my-6 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#030712]">
                 <div className="flex items-center justify-between border-b border-white/[0.07] bg-white/[0.025] px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full bg-red-400/60" />
                     <span className="h-2.5 w-2.5 rounded-full bg-yellow-400/60" />
                     <span className="h-2.5 w-2.5 rounded-full bg-green-400/60" />
 
-                    <span className="ml-2 text-[10px] uppercase tracking-[0.16em] text-slate-600">
+                    <span className="ml-2 text-[10px] uppercase tracking-[0.15em] text-slate-600">
                       {language}
                     </span>
                   </div>
@@ -1528,7 +1563,7 @@ function FormattedAnswer({
                         codeId
                       )
                     }
-                    className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-600 transition hover:bg-white/[0.05] hover:text-slate-300"
+                    className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-600 hover:bg-white/[0.05] hover:text-slate-300"
                   >
                     {copiedCode ===
                     codeId ? (
@@ -1554,28 +1589,17 @@ function FormattedAnswer({
             );
           },
 
-          /* ============================================
-             INLINE CODE
-          ============================================ */
-
-          code({
-            children,
-          }) {
+          table({ children }) {
             return (
-              <code>
-                {children}
-              </code>
+              <div className="quantum-scroll my-6 overflow-x-auto rounded-xl border border-white/[0.07]">
+                <table className="m-0 min-w-[600px]">
+                  {children}
+                </table>
+              </div>
             );
           },
 
-          /* ============================================
-             LINKS
-          ============================================ */
-
-          a({
-            children,
-            href,
-          }) {
+          a({ children, href }) {
             return (
               <a
                 href={href}
@@ -1584,22 +1608,6 @@ function FormattedAnswer({
               >
                 {children}
               </a>
-            );
-          },
-
-          /* ============================================
-             TABLES
-          ============================================ */
-
-          table({
-            children,
-          }) {
-            return (
-              <div className="quantum-scroll my-6 overflow-x-auto rounded-xl border border-white/[0.07]">
-                <table className="m-0 min-w-[620px]">
-                  {children}
-                </table>
-              </div>
             );
           },
         }}
@@ -1611,147 +1619,7 @@ function FormattedAnswer({
 }
 
 /* =========================================================
-   RESEARCH PANEL
-========================================================= */
-
-function ResearchPanel({
-  results,
-}: {
-  results: ResearchResult[];
-}) {
-  return (
-    <div className="mb-4 overflow-hidden rounded-2xl border border-cyan-300/[0.10] bg-cyan-300/[0.025]">
-      {/* HEADER */}
-
-      <div className="flex items-center justify-between border-b border-cyan-300/[0.06] px-4 py-3">
-        <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-300/[0.06]">
-            <Globe2 className="h-3.5 w-3.5 text-cyan-300" />
-          </div>
-
-          <div>
-            <p className="text-xs font-medium text-cyan-200">
-              Live web research
-            </p>
-
-            <p className="text-[10px] text-slate-700">
-              Current sources found by Quantum
-            </p>
-          </div>
-        </div>
-
-        <span className="rounded-full border border-white/[0.06] bg-white/[0.02] px-2.5 py-1 text-[10px] text-slate-600">
-          {results.length} sources
-        </span>
-      </div>
-
-      {/* RESULTS */}
-
-      <div className="grid gap-2 p-3 sm:grid-cols-2">
-        {results.map(
-          (result, index) => (
-            <a
-              key={`${result.url}-${index}`}
-              href={result.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group rounded-xl border border-white/[0.06] bg-black/20 p-3 transition hover:border-cyan-300/15 hover:bg-white/[0.03]"
-            >
-              <div className="flex items-start gap-3">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-[10px] font-semibold text-cyan-300">
-                  {index + 1}
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <p className="line-clamp-2 text-xs font-medium leading-5 text-slate-300 group-hover:text-white">
-                    {result.title}
-                  </p>
-
-                  {result.content && (
-                    <p className="mt-1 line-clamp-2 text-[10px] leading-5 text-slate-600">
-                      {result.content}
-                    </p>
-                  )}
-
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="truncate text-[9px] text-slate-700">
-                      {getHostname(
-                        result.url
-                      )}
-                    </span>
-
-                    {typeof result.score ===
-                      "number" && (
-                      <span className="shrink-0 text-[9px] text-cyan-300/30">
-                        {Math.round(
-                          result.score * 100
-                        )}
-                        %
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <ExternalLink className="mt-1 h-3.5 w-3.5 shrink-0 text-slate-700 transition group-hover:text-cyan-300" />
-              </div>
-            </a>
-          )
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================
-   HOSTNAME
-========================================================= */
-
-function getHostname(
-  url: string
-) {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
-}
-
-/* =========================================================
-   PROMPT CARD
-========================================================= */
-
-function Prompt({
-  label,
-  text,
-  onClick,
-}: {
-  label: string;
-  text: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-cyan-300/15 hover:bg-white/[0.045]"
-    >
-      <div className="mb-3 flex items-center justify-between">
-        <span className="text-[9px] font-semibold tracking-[0.2em] text-slate-700 transition group-hover:text-cyan-400/60">
-          {label}
-        </span>
-
-        <Sparkles className="h-3.5 w-3.5 text-slate-700 transition group-hover:text-cyan-300" />
-      </div>
-
-      <p className="text-sm leading-6 text-slate-400 transition group-hover:text-slate-200">
-        {text}
-      </p>
-    </button>
-  );
-}
-
-/* =========================================================
-   SEARCH STATUS
+   STATUS
 ========================================================= */
 
 function SearchProgress({
@@ -1761,41 +1629,51 @@ function SearchProgress({
 }) {
   if (status === "searching") {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-cyan-300/10 bg-cyan-300/[0.035] p-4 text-sm text-slate-400">
+      <div className="flex items-center gap-3 text-sm text-slate-500">
         <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />
-
-        Searching the live web...
+        Just a sec...
       </div>
     );
   }
 
   if (status === "analyzing") {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-violet-300/10 bg-violet-300/[0.025] p-4 text-sm text-slate-400">
+      <div className="flex items-center gap-3 text-sm text-slate-500">
         <Sparkles className="h-4 w-4 animate-pulse text-cyan-300" />
-
-        Quantum is synthesizing the research...
+        Just a sec...
       </div>
     );
   }
 
   if (status === "error") {
     return (
-      <div className="rounded-xl border border-red-300/10 bg-red-300/[0.025] p-4 text-sm text-red-300">
+      <div className="text-sm text-red-300">
         Quantum encountered an error.
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-3 text-sm text-slate-500">
+    <div className="flex items-center gap-3 text-sm text-slate-600">
       <div className="flex gap-1">
         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-300 [animation-delay:-0.3s]" />
         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-300 [animation-delay:-0.15s]" />
         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-300" />
       </div>
 
-      Quantum is thinking...
+      Just a sec...
     </div>
   );
+}
+
+/* =========================================================
+   UTILS
+========================================================= */
+
+function getHostname(url: string) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
 }
