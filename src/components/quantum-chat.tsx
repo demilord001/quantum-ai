@@ -8,7 +8,6 @@ import {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-
 import {
   ArrowUp,
   Check,
@@ -25,6 +24,8 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+
+import { UserButton } from "@clerk/nextjs";
 
 interface Source {
   title: string;
@@ -909,7 +910,7 @@ export default function QuantumChat({
               type="button"
               className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 hover:bg-white/[0.035]"
             >
-              <Settings className="h-4 w-4" />
+              <UserButton />
 
               Settings
             </button>
@@ -1141,7 +1142,7 @@ function EmptyState({
         </p>
 
         <h1 className="mt-2 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-          Good morning,{" "}
+          What next,{" "} ?
           <span className="bg-gradient-to-r from-cyan-300 via-sky-300 to-violet-400 bg-clip-text text-transparent">
             {firstName}
           </span>

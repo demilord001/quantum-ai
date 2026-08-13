@@ -258,6 +258,8 @@ Rules:
 - Format code using fenced Markdown.
 - Do not unnecessarily repeat the research.
 - Keep the final answer focused and useful.
+- Be precise and professional.
+- Read the internet. It is a must
 `;
 
             let userPrompt =

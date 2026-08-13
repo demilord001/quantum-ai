@@ -19,6 +19,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Quantum Intelligence",
   description: "A next-generation AI tool that simplifies your research and enhances productivity.",
+  icons: {
+    icon: "/public/favicon.png",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
