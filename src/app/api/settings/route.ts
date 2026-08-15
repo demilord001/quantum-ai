@@ -3,7 +3,9 @@ import {
   NextResponse,
 } from "next/server";
 
-import { auth } from "@clerk/nextjs/server";
+import {
+  auth,
+} from "@clerk/nextjs/server";
 
 import clientPromise from "@/lib/mongodb";
 
@@ -14,20 +16,28 @@ import {
 
 export const runtime = "nodejs";
 
-const COLLECTION = "userSettings";
+const COLLECTION =
+  "userSettings";
 
 /* =========================================================
-   GET SETTINGS
+   GET
 ========================================================= */
 
 export async function GET() {
   try {
-    const { userId } = await auth();
+    const {
+      isAuthenticated,
+      userId,
+    } = await auth();
 
-    if (!userId) {
+    if (
+      !isAuthenticated ||
+      !userId
+    ) {
       return NextResponse.json(
         {
-          error: "Unauthorized.",
+          error:
+            "Unauthorized.",
         },
         {
           status: 401,
@@ -35,25 +45,45 @@ export async function GET() {
       );
     }
 
-    const client = await clientPromise;
+    const client =
+      await clientPromise;
 
-    const db = client.db(
-      process.env.MONGODB_DB || "quantum"
+    const db =
+      client.db(
+        process.env.MONGODB_DB ||
+          "quantum"
+      );
+
+    const rawSettings =
+      await db
+        .collection(
+          COLLECTION
+        )
+        .findOne({
+          userId,
+        });
+
+    if (!rawSettings) {
+      return NextResponse.json(
+        {
+          settings:
+            DEFAULT_QUANTUM_SETTINGS,
+        }
+      );
+    }
+
+    const settings =
+      sanitizeQuantumSettings(
+        rawSettings as Partial<
+          typeof DEFAULT_QUANTUM_SETTINGS
+        >
+      );
+
+    return NextResponse.json(
+      {
+        settings,
+      }
     );
-
-    const stored = await db
-      .collection(COLLECTION)
-      .findOne({
-        userId,
-      });
-
-    return NextResponse.json({
-      settings: stored
-        ? sanitizeQuantumSettings(
-            stored as Record<string, unknown>
-          )
-        : DEFAULT_QUANTUM_SETTINGS,
-    });
   } catch (error) {
     console.error(
       "GET SETTINGS ERROR:",
@@ -75,19 +105,26 @@ export async function GET() {
 }
 
 /* =========================================================
-   PATCH SETTINGS
+   PATCH
 ========================================================= */
 
 export async function PATCH(
   request: NextRequest
 ) {
   try {
-    const { userId } = await auth();
+    const {
+      isAuthenticated,
+      userId,
+    } = await auth();
 
-    if (!userId) {
+    if (
+      !isAuthenticated ||
+      !userId
+    ) {
       return NextResponse.json(
         {
-          error: "Unauthorized.",
+          error:
+            "Unauthorized.",
         },
         {
           status: 401,
@@ -95,20 +132,27 @@ export async function PATCH(
       );
     }
 
-    const body = await request.json();
+    const body =
+      await request.json();
 
-    const settings = sanitizeQuantumSettings(
-      body || {}
-    );
+    const settings =
+      sanitizeQuantumSettings(
+        body
+      );
 
-    const client = await clientPromise;
+    const client =
+      await clientPromise;
 
-    const db = client.db(
-      process.env.MONGODB_DB || "quantum"
-    );
+    const db =
+      client.db(
+        process.env.MONGODB_DB ||
+          "quantum"
+      );
 
     await db
-      .collection(COLLECTION)
+      .collection(
+        COLLECTION
+      )
       .updateOne(
         {
           userId,
@@ -119,11 +163,13 @@ export async function PATCH(
 
             ...settings,
 
-            updatedAt: new Date(),
+            updatedAt:
+              new Date(),
           },
 
           $setOnInsert: {
-            createdAt: new Date(),
+            createdAt:
+              new Date(),
           },
         },
         {

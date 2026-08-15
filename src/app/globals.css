@@ -32,6 +32,7 @@ body {
     #020617;
 
   color: var(--foreground);
+  background: #020617;
 }
 
 .quantum-grid {
@@ -131,26 +132,11 @@ body {
 .quantum-markdown code {
   font-variant-ligatures: none;
 }
-
-/* =====================================================
-   QUANTUM ANSWER
-===================================================== */
-
-.quantum-answer {
-  word-break: break-word;
-}
-
-.quantum-answer p:last-child {
-  margin-bottom: 0;
-}
-
-/* =====================================================
-   QUANTUM SCROLLBAR
-===================================================== */
-
 .quantum-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgba(103, 232, 249, 0.18) transparent;
+  scrollbar-color:
+    rgba(103, 232, 249, 0.18)
+    transparent;
 }
 
 .quantum-scroll::-webkit-scrollbar {
@@ -163,12 +149,14 @@ body {
 }
 
 .quantum-scroll::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.12);
+  background:
+    rgba(148, 163, 184, 0.12);
   border-radius: 999px;
 }
 
 .quantum-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(103, 232, 249, 0.28);
+  background:
+    rgba(103, 232, 249, 0.28);
 }
 
 .quantum-scroll::-webkit-scrollbar-corner {
@@ -176,10 +164,34 @@ body {
 }
 
 /* =====================================================
+   ANSWER
+===================================================== */
+
+.quantum-answer {
+  word-break: break-word;
+}
+
+.quantum-answer p:last-child {
+  margin-bottom: 0;
+}
+
+.quantum-answer h1:first-child,
+.quantum-answer h2:first-child,
+.quantum-answer h3:first-child {
+  margin-top: 0;
+}
+
+.quantum-answer code {
+  font-variant-ligatures: none;
+}
+
+/* =====================================================
    SELECTION
 ===================================================== */
 
 ::selection {
-  background: rgba(34, 211, 238, 0.2);
+  background:
+    rgba(34, 211, 238, 0.2);
+
   color: white;
 }

@@ -1,4 +1,4 @@
-const GREETING_PATTERNS = [
+const GREETINGS = [
   /^hi[!. ]*$/i,
   /^hey[!. ]*$/i,
   /^hello[!. ]*$/i,
@@ -10,31 +10,33 @@ const GREETING_PATTERNS = [
   /^how are you[?.! ]*$/i,
   /^how's it going[?.! ]*$/i,
   /^what's up[?.! ]*$/i,
+];
+
+const ACKNOWLEDGEMENTS = [
   /^thanks[!. ]*$/i,
   /^thank you[!. ]*$/i,
-  /^ok[!. ]*$/i,
   /^okay[!. ]*$/i,
+  /^ok[!. ]*$/i,
   /^cool[!. ]*$/i,
   /^nice[!. ]*$/i,
   /^great[!. ]*$/i,
 ];
 
-const SIMPLE_NO_SEARCH_PATTERNS = [
-  /^what is \d+\s*[+\-*/]\s*\d+\??$/i,
-  /^\d+\s*[+\-*/]\s*\d+$/,
-];
+const SIMPLE_MATH =
+  /^[\d\s()+\-*/%.]+$/;
 
 export function isCasualMessage(
   input: string
 ) {
-  const text = input.trim();
+  const text =
+    input.trim();
 
   if (!text) {
     return true;
   }
 
   if (
-    GREETING_PATTERNS.some(
+    GREETINGS.some(
       (pattern) =>
         pattern.test(text)
     )
@@ -43,10 +45,21 @@ export function isCasualMessage(
   }
 
   if (
-    SIMPLE_NO_SEARCH_PATTERNS.some(
+    ACKNOWLEDGEMENTS.some(
       (pattern) =>
         pattern.test(text)
     )
+  ) {
+    return true;
+  }
+
+  /*
+   * Only skip obvious arithmetic.
+   */
+  if (
+    SIMPLE_MATH.test(text) &&
+    /[\d]/.test(text) &&
+    /[+\-*/%]/.test(text)
   ) {
     return true;
   }
@@ -57,37 +70,7 @@ export function isCasualMessage(
 export function shouldSearch(
   input: string
 ) {
-  /*
-   * Search almost everything.
-   *
-   * We only skip:
-   * - greetings
-   * - acknowledgements
-   * - obvious local arithmetic
-   *
-   * This is intentionally NOT based on words
-   * like "latest", "today", "news", etc.
-   */
-
   return !isCasualMessage(input);
-}
-
-export function isUrl(
-  input: string
-) {
-  try {
-    const url =
-      new URL(input.trim());
-
-    return (
-      url.protocol ===
-        "http:" ||
-      url.protocol ===
-        "https:"
-    );
-  } catch {
-    return false;
-  }
 }
 
 export function extractUrl(
@@ -108,6 +91,22 @@ export function extractUrl(
   );
 }
 
+export function isUrl(
+  input: string
+) {
+  try {
+    const url =
+      new URL(input.trim());
+
+    return (
+      url.protocol === "http:" ||
+      url.protocol === "https:"
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function isYouTubeUrl(
   url: string
 ) {
@@ -119,7 +118,8 @@ export function isYouTubeUrl(
         .replace(/^www\./, "");
 
     return (
-      hostname === "youtube.com" ||
+      hostname ===
+        "youtube.com" ||
       hostname ===
         "m.youtube.com" ||
       hostname ===

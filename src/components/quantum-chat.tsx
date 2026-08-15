@@ -11,6 +11,10 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import {
+  UserButton,
+} from "@clerk/nextjs";
+
+import {
   ArrowUp,
   Check,
   Copy,
@@ -26,13 +30,8 @@ import {
   Search,
   Settings,
   Sparkles,
-  Trash2,
   X,
 } from "lucide-react";
-
-/* =========================================================
-   TYPES
-========================================================= */
 
 interface Source {
   title: string;
@@ -47,22 +46,35 @@ interface ResearchResult {
   score?: number;
   publishedDate?: string;
   favicon?: string;
-  sourceType?: "web" | "page" | "youtube";
+  sourceType?:
+    | "web"
+    | "page"
+    | "youtube";
 }
 
 interface Message {
-  role: "user" | "assistant";
+  role:
+    | "user"
+    | "assistant";
+
   content: string;
+
   sources?: Source[];
+
   research?: ResearchResult[];
+
   streamId?: string;
 }
 
 interface Conversation {
   _id: string;
+
   title: string;
+
   messages: Message[];
+
   createdAt?: string;
+
   updatedAt?: string;
 }
 
@@ -78,100 +90,135 @@ interface QuantumChatProps {
   firstName: string;
 }
 
-/* =========================================================
-   MAIN
-========================================================= */
-
 export default function QuantumChat({
   firstName,
 }: QuantumChatProps) {
-  const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState<Message[]>(
+  const [message, setMessage] =
+    useState("");
+
+  const [messages, setMessages] =
+    useState<Message[]>([]);
+
+  const [
+    conversations,
+    setConversations,
+  ] = useState<Conversation[]>(
     []
   );
 
-  const [conversations, setConversations] = useState<
-    Conversation[]
-  >([]);
+  const [
+    conversationId,
+    setConversationId,
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const [conversationId, setConversationId] =
-    useState<string | null>(null);
-
-  const [loading, setLoading] = useState(false);
-
-  const [searchStatus, setSearchStatus] =
-    useState<SearchStatus>("idle");
-
-  /* Desktop sidebar state */
-  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] =
+  const [loading, setLoading] =
     useState(false);
 
-  /* Mobile sidebar state */
-  const [mobileSidebarOpen, setMobileSidebarOpen] =
+  const [
+    searchStatus,
+    setSearchStatus,
+  ] =
+    useState<SearchStatus>(
+      "idle"
+    );
+
+  const [
+    desktopSidebarCollapsed,
+    setDesktopSidebarCollapsed,
+  ] =
     useState(false);
 
-  /* One menu at a time */
-  const [openMenuId, setOpenMenuId] =
-    useState<string | null>(null);
+  const [
+    mobileSidebarOpen,
+    setMobileSidebarOpen,
+  ] = useState(false);
 
-  const [renamingId, setRenamingId] =
-    useState<string | null>(null);
+  const [
+    openMenuId,
+    setOpenMenuId,
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const [renameValue, setRenameValue] =
-    useState("");
+  const [
+    renamingId,
+    setRenamingId,
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const [sidebarSearch, setSidebarSearch] =
-    useState("");
+  const [
+    renameValue,
+    setRenameValue,
+  ] = useState("");
 
-  const [autoScroll, setAutoScroll] =
-    useState(true);
+  const [
+    sidebarSearch,
+    setSidebarSearch,
+  ] = useState("");
 
-  const [copiedMessage, setCopiedMessage] =
-    useState<number | null>(null);
+  const [
+    autoScroll,
+    setAutoScroll,
+  ] = useState(true);
 
-  const [copiedCode, setCopiedCode] =
-    useState<string | null>(null);
+  const [
+    copiedMessage,
+    setCopiedMessage,
+  ] = useState<number | null>(
+    null
+  );
+
+  const [
+    copiedCode,
+    setCopiedCode,
+  ] =
+    useState<string | null>(
+      null
+    );
 
   const textareaRef =
-    useRef<HTMLTextAreaElement | null>(null);
+    useRef<HTMLTextAreaElement | null>(
+      null
+    );
 
   const messageAreaRef =
-    useRef<HTMLDivElement | null>(null);
+    useRef<HTMLDivElement | null>(
+      null
+    );
 
   const bottomRef =
-    useRef<HTMLDivElement | null>(null);
+    useRef<HTMLDivElement | null>(
+      null
+    );
 
   /* =======================================================
-     LOAD CONVERSATIONS
+     CONVERSATIONS
   ======================================================= */
 
   const loadConversations =
     useCallback(async () => {
       try {
-        const response = await fetch(
-          "/api/conversations",
-          {
-            method: "GET",
-            cache: "no-store",
-          }
-        );
-
-        if (!response.ok) {
-          const data = await response
-            .json()
-            .catch(() => null);
-
-          console.error(
-            "Failed to load conversations:",
-            response.status,
-            data
+        const response =
+          await fetch(
+            "/api/conversations",
+            {
+              method: "GET",
+              cache: "no-store",
+            }
           );
 
+        if (!response.ok) {
           return;
         }
 
         const data =
-          (await response.json()) as Conversation[];
+          await response.json();
 
         if (Array.isArray(data)) {
           setConversations(data);
@@ -189,14 +236,22 @@ export default function QuantumChat({
   }, [loadConversations]);
 
   /* =======================================================
-     CLOSE MENU WHEN ESC PRESSED
+     ESC
   ======================================================= */
 
   useEffect(() => {
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
+    function handleEscape(
+      event: KeyboardEvent
+    ) {
+      if (
+        event.key ===
+        "Escape"
+      ) {
         setOpenMenuId(null);
         setRenamingId(null);
+        setMobileSidebarOpen(
+          false
+        );
       }
     }
 
@@ -205,16 +260,15 @@ export default function QuantumChat({
       handleEscape
     );
 
-    return () => {
+    return () =>
       window.removeEventListener(
         "keydown",
         handleEscape
       );
-    };
   }, []);
 
   /* =======================================================
-     AUTO SCROLL
+     SCROLL
   ======================================================= */
 
   useEffect(() => {
@@ -222,31 +276,36 @@ export default function QuantumChat({
       return;
     }
 
-    bottomRef.current?.scrollIntoView({
-      behavior: loading ? "auto" : "smooth",
-      block: "end",
-    });
-  }, [messages, loading, autoScroll]);
+    bottomRef.current?.scrollIntoView(
+      {
+        behavior: loading
+          ? "auto"
+          : "smooth",
 
-  /* =======================================================
-     SCROLL DETECTION
-  ======================================================= */
+        block: "end",
+      }
+    );
+  }, [
+    messages,
+    loading,
+    autoScroll,
+  ]);
 
   function handleMessageScroll() {
-    const container =
+    const element =
       messageAreaRef.current;
 
-    if (!container) {
+    if (!element) {
       return;
     }
 
-    const distanceFromBottom =
-      container.scrollHeight -
-      container.scrollTop -
-      container.clientHeight;
+    const distance =
+      element.scrollHeight -
+      element.scrollTop -
+      element.clientHeight;
 
     setAutoScroll(
-      distanceFromBottom < 160
+      distance < 160
     );
   }
 
@@ -296,25 +355,28 @@ export default function QuantumChat({
       if (!response.ok) {
         throw new Error(
           data?.error ||
-            "Unable to open conversation."
+            "Unable to load conversation."
         );
       }
 
-      setConversationId(data._id);
+      setConversationId(
+        data._id
+      );
+
       setMessages(
-        Array.isArray(data.messages)
+        Array.isArray(
+          data.messages
+        )
           ? data.messages
           : []
       );
 
       setMessage("");
-      setSearchStatus("idle");
       setAutoScroll(true);
-      setMobileSidebarOpen(false);
-
-      setTimeout(() => {
-        textareaRef.current?.focus();
-      }, 50);
+      setMobileSidebarOpen(
+        false
+      );
+      setSearchStatus("idle");
     } catch (error) {
       console.error(
         "Open conversation error:",
@@ -324,7 +386,7 @@ export default function QuantumChat({
   }
 
   /* =======================================================
-     DELETE CHAT
+     DELETE
   ======================================================= */
 
   async function deleteConversation(
@@ -347,36 +409,38 @@ export default function QuantumChat({
       if (!response.ok) {
         throw new Error(
           data?.error ||
-            "Unable to delete conversation."
+            "Delete failed."
         );
       }
 
       setConversations(
         (previous) =>
           previous.filter(
-            (conversation) =>
-              conversation._id !== id
+            (item) =>
+              item._id !== id
           )
       );
 
-      if (conversationId === id) {
+      if (
+        conversationId === id
+      ) {
         startNewChat();
       }
 
       setOpenMenuId(null);
     } catch (error) {
       console.error(
-        "Delete conversation error:",
+        "Delete error:",
         error
       );
     }
   }
 
   /* =======================================================
-     START RENAME
+     RENAME
   ======================================================= */
 
-  function beginRename(
+  function startRename(
     conversation: Conversation
   ) {
     setRenameValue(
@@ -390,18 +454,10 @@ export default function QuantumChat({
     setOpenMenuId(null);
   }
 
-  /* =======================================================
-     CANCEL RENAME
-  ======================================================= */
-
   function cancelRename() {
     setRenamingId(null);
     setRenameValue("");
   }
-
-  /* =======================================================
-     SAVE RENAME
-  ======================================================= */
 
   async function saveRename(
     id: string
@@ -442,36 +498,36 @@ export default function QuantumChat({
       if (!response.ok) {
         throw new Error(
           data?.error ||
-            "Unable to rename conversation."
+            "Rename failed."
         );
       }
 
       setConversations(
         (previous) =>
           previous.map(
-            (conversation) =>
-              conversation._id === id
+            (item) =>
+              item._id === id
                 ? {
-                    ...conversation,
+                    ...item,
                     title:
                       data.title ||
                       title,
                   }
-                : conversation
+                : item
           )
       );
 
       cancelRename();
     } catch (error) {
       console.error(
-        "Rename conversation error:",
+        "Rename error:",
         error
       );
     }
   }
 
   /* =======================================================
-     SEND + STREAM
+     SEND
   ======================================================= */
 
   async function sendMessage() {
@@ -493,32 +549,34 @@ export default function QuantumChat({
     const history =
       [...messages];
 
-    const userMessage: Message = {
-      role: "user",
-      content: text,
-    };
-
-    const assistantPlaceholder: Message =
-      {
-        role: "assistant",
-        content: "",
-        sources: [],
-        research: [],
-        streamId,
-      };
-
     setMessages(
       (previous) => [
         ...previous,
-        userMessage,
-        assistantPlaceholder,
+
+        {
+          role: "user",
+          content: text,
+        },
+
+        {
+          role:
+            "assistant",
+
+          content: "",
+
+          sources: [],
+
+          research: [],
+
+          streamId,
+        },
       ]
     );
 
     setMessage("");
     setLoading(true);
-    setSearchStatus("thinking");
     setAutoScroll(true);
+    setSearchStatus("thinking");
 
     try {
       const response =
@@ -534,36 +592,29 @@ export default function QuantumChat({
 
             body: JSON.stringify({
               message: text,
+
               conversationId,
+
               history,
             }),
           }
         );
 
       if (!response.ok) {
-        let errorMessage =
-          `Quantum request failed (${response.status}).`;
-
-        try {
-          const data =
-            await response.json();
-
-          if (data?.error) {
-            errorMessage =
-              data.error;
-          }
-        } catch {
-          // Ignore invalid error response.
-        }
+        const data =
+          await response
+            .json()
+            .catch(() => null);
 
         throw new Error(
-          errorMessage
+          data?.error ||
+            `Quantum request failed (${response.status}).`
         );
       }
 
       if (!response.body) {
         throw new Error(
-          "Quantum returned no streaming response."
+          "Quantum returned no stream."
         );
       }
 
@@ -579,7 +630,8 @@ export default function QuantumChat({
         const {
           value,
           done,
-        } = await reader.read();
+        } =
+          await reader.read();
 
         if (done) {
           break;
@@ -604,26 +656,22 @@ export default function QuantumChat({
         for (
           const event of events
         ) {
-          if (!event.trim()) {
-            continue;
-          }
-
-          const dataLine =
+          const line =
             event
               .split("\n")
               .find(
-                (line) =>
-                  line.startsWith(
+                (value) =>
+                  value.startsWith(
                     "data:"
                   )
               );
 
-          if (!dataLine) {
+          if (!line) {
             continue;
           }
 
           const payload =
-            dataLine
+            line
               .replace(
                 /^data:\s*/,
                 ""
@@ -634,29 +682,16 @@ export default function QuantumChat({
             continue;
           }
 
-          let data: {
-            type: string;
-            status?: SearchStatus;
-            text?: string;
-            sources?: Source[];
-            results?: ResearchResult[];
-            conversationId?: string;
-            error?: string;
-          };
+          let data: any;
 
           try {
             data =
-              JSON.parse(payload);
+              JSON.parse(
+                payload
+              );
           } catch {
-            console.warn(
-              "Invalid stream payload:",
-              payload
-            );
-
             continue;
           }
-
-          /* STATUS */
 
           if (
             data.type ===
@@ -670,8 +705,6 @@ export default function QuantumChat({
             continue;
           }
 
-          /* RESEARCH */
-
           if (
             data.type ===
             "research"
@@ -679,21 +712,17 @@ export default function QuantumChat({
             setMessages(
               (previous) =>
                 previous.map(
-                  (item) => {
-                    if (
-                      item.streamId !==
-                      streamId
-                    ) {
-                      return item;
-                    }
+                  (item) =>
+                    item.streamId ===
+                    streamId
+                      ? {
+                          ...item,
 
-                    return {
-                      ...item,
-                      research:
-                        data.results ||
-                        [],
-                    };
-                  }
+                          research:
+                            data.results ||
+                            [],
+                        }
+                      : item
                 )
             );
 
@@ -704,8 +733,6 @@ export default function QuantumChat({
             continue;
           }
 
-          /* SOURCES */
-
           if (
             data.type ===
             "sources"
@@ -713,28 +740,22 @@ export default function QuantumChat({
             setMessages(
               (previous) =>
                 previous.map(
-                  (item) => {
-                    if (
-                      item.streamId !==
-                      streamId
-                    ) {
-                      return item;
-                    }
+                  (item) =>
+                    item.streamId ===
+                    streamId
+                      ? {
+                          ...item,
 
-                    return {
-                      ...item,
-                      sources:
-                        data.sources ||
-                        [],
-                    };
-                  }
+                          sources:
+                            data.sources ||
+                            [],
+                        }
+                      : item
                 )
             );
 
             continue;
           }
-
-          /* TEXT */
 
           if (
             data.type ===
@@ -744,36 +765,29 @@ export default function QuantumChat({
               continue;
             }
 
+            setMessages(
+              (previous) =>
+                previous.map(
+                  (item) =>
+                    item.streamId ===
+                    streamId
+                      ? {
+                          ...item,
+
+                          content:
+                            item.content +
+                            data.text,
+                        }
+                      : item
+                )
+            );
+
             setSearchStatus(
               "analyzing"
             );
 
-            setMessages(
-              (previous) =>
-                previous.map(
-                  (item) => {
-                    if (
-                      item.streamId !==
-                      streamId
-                    ) {
-                      return item;
-                    }
-
-                    return {
-                      ...item,
-
-                      content:
-                        item.content +
-                        data.text,
-                    };
-                  }
-                )
-            );
-
             continue;
           }
-
-          /* DONE */
 
           if (
             data.type ===
@@ -788,43 +802,10 @@ export default function QuantumChat({
               "done"
             );
 
-            setMessages(
-              (previous) =>
-                previous.map(
-                  (item) => {
-                    if (
-                      item.streamId !==
-                      streamId
-                    ) {
-                      return item;
-                    }
-
-                    return {
-                      role:
-                        item.role,
-
-                      content:
-                        item.content,
-
-                      sources:
-                        item.sources ||
-                        data.sources ||
-                        [],
-
-                      research:
-                        item.research ||
-                        [],
-                    };
-                  }
-                )
-            );
-
             await loadConversations();
 
             continue;
           }
-
-          /* ERROR */
 
           if (
             data.type ===
@@ -832,41 +813,36 @@ export default function QuantumChat({
           ) {
             throw new Error(
               data.error ||
-                "Quantum stream failed."
+                "Quantum failed."
             );
           }
         }
       }
     } catch (error) {
       console.error(
-        "Quantum frontend error:",
+        "Quantum error:",
         error
       );
 
-      const errorMessage =
+      const text =
         error instanceof
-          Error
+        Error
           ? error.message
           : "Something went wrong.";
 
       setMessages(
         (previous) =>
           previous.map(
-            (item) => {
-              if (
-                item.streamId !==
-                streamId
-              ) {
-                return item;
-              }
+            (item) =>
+              item.streamId ===
+              streamId
+                ? {
+                    ...item,
 
-              return {
-                ...item,
-
-                content:
-                  `**Quantum error**\n\n${errorMessage}`,
-              };
-            }
+                    content:
+                      `**Quantum error**\n\n${text}`,
+                  }
+                : item
           )
       );
 
@@ -901,7 +877,7 @@ export default function QuantumChat({
   }
 
   /* =======================================================
-     COPY ANSWER
+     COPY
   ======================================================= */
 
   async function copyAnswer(
@@ -918,48 +894,30 @@ export default function QuantumChat({
       setTimeout(() => {
         setCopiedMessage(null);
       }, 1500);
-    } catch (error) {
-      console.error(
-        "Copy answer failed:",
-        error
-      );
-    }
+    } catch {}
   }
-
-  /* =======================================================
-     COPY CODE
-  ======================================================= */
 
   async function copyCode(
     code: string,
-    codeId: string
+    id: string
   ) {
     try {
       await navigator.clipboard.writeText(
         code
       );
 
-      setCopiedCode(codeId);
+      setCopiedCode(id);
 
       setTimeout(() => {
         setCopiedCode(null);
       }, 1500);
-    } catch (error) {
-      console.error(
-        "Copy code failed:",
-        error
-      );
-    }
+    } catch {}
   }
-
-  /* =======================================================
-     FILTERED SIDEBAR
-  ======================================================= */
 
   const filteredConversations =
     conversations.filter(
-      (conversation) =>
-        conversation.title
+      (item) =>
+        item.title
           .toLowerCase()
           .includes(
             sidebarSearch
@@ -975,19 +933,18 @@ export default function QuantumChat({
   return (
     <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-[#020617] text-white">
 
-      {/* ==================================================
-          BACKGROUND
-      ================================================== */}
+      {/* BACKGROUND */}
 
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-[28%] top-[-280px] h-[650px] w-[650px] rounded-full bg-cyan-400/[0.045] blur-[170px]" />
 
-        <div className="absolute bottom-[-250px] right-[-120px] h-[600px] w-[600px] rounded-full bg-violet-500/[0.04] blur-[170px]" />
+        <div className="absolute bottom-[-250px] right-[-100px] h-[600px] w-[600px] rounded-full bg-violet-500/[0.04] blur-[170px]" />
 
         <div
-          className="absolute inset-0 opacity-[0.16]"
+          className="absolute inset-0 opacity-[0.14]"
           style={{
-            backgroundImage: `
+            backgroundImage:
+              `
               linear-gradient(
                 rgba(255,255,255,0.025) 1px,
                 transparent 1px
@@ -998,54 +955,55 @@ export default function QuantumChat({
                 transparent 1px
               )
             `,
+
             backgroundSize:
               "48px 48px",
           }}
         />
       </div>
 
-      {/* ==================================================
-          MOBILE BACKDROP
-      ================================================== */}
+      {/* MOBILE OVERLAY */}
 
       {mobileSidebarOpen && (
         <button
           type="button"
           aria-label="Close sidebar"
           onClick={() =>
-            setMobileSidebarOpen(false)
+            setMobileSidebarOpen(
+              false
+            )
           }
           className="absolute inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
         />
       )}
 
-      {/* ==================================================
-          SIDEBAR
-      ================================================== */}
+      {/* SIDEBAR */}
 
       <aside
         className={`
           absolute inset-y-0 left-0 z-50
-          flex flex-col
+          flex
+          w-[280px]
+          min-w-[280px]
+          flex-col
           border-r border-white/[0.07]
-          bg-[#030712]/96
+          bg-[#030712]/97
           backdrop-blur-2xl
           transition-all duration-300
           lg:relative
           lg:z-20
-          lg:translate-x-0
+
           ${
             mobileSidebarOpen
               ? "translate-x-0"
               : "-translate-x-full"
           }
+
           ${
             desktopSidebarCollapsed
               ? "lg:w-0 lg:min-w-0 lg:overflow-hidden lg:border-r-0"
-              : "lg:w-[280px] lg:min-w-[280px]"
+              : "lg:translate-x-0"
           }
-          w-[280px]
-          min-w-[280px]
         `}
       >
         <div className="flex h-full w-[280px] flex-col">
@@ -1053,11 +1011,11 @@ export default function QuantumChat({
           {/* SIDEBAR HEADER */}
 
           <div className="flex h-[72px] shrink-0 items-center gap-3 px-5">
-            <div className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-cyan-300/15 bg-cyan-300/[0.06]">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-cyan-300/15 bg-cyan-300/[0.06]">
               <Sparkles className="h-4 w-4 text-cyan-300" />
             </div>
 
-            <div className="min-w-0">
+            <div>
               <p className="text-sm font-semibold tracking-[0.15em]">
                 QUANTUM
               </p>
@@ -1067,8 +1025,6 @@ export default function QuantumChat({
               </p>
             </div>
 
-            {/* DESKTOP CLOSE */}
-
             <button
               type="button"
               onClick={() =>
@@ -1076,14 +1032,11 @@ export default function QuantumChat({
                   true
                 )
               }
-              className="ml-auto hidden h-8 w-8 items-center justify-center rounded-lg text-slate-600 transition hover:bg-white/[0.05] hover:text-slate-300 lg:flex"
+              className="ml-auto hidden h-8 w-8 items-center justify-center rounded-lg text-slate-600 hover:bg-white/[0.05] hover:text-slate-300 lg:flex"
               aria-label="Collapse sidebar"
-              title="Collapse sidebar"
             >
               <PanelLeftClose className="h-4 w-4" />
             </button>
-
-            {/* MOBILE CLOSE */}
 
             <button
               type="button"
@@ -1092,24 +1045,22 @@ export default function QuantumChat({
                   false
                 )
               }
-              className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 transition hover:bg-white/[0.05] hover:text-slate-300 lg:hidden"
+              className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 hover:bg-white/[0.05] hover:text-slate-300 lg:hidden"
               aria-label="Close sidebar"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
 
-          {/* NEW CHAT */}
+          {/* NEW */}
 
           <div className="shrink-0 px-4">
             <button
               type="button"
               onClick={startNewChat}
-              className="group flex w-full items-center gap-3 rounded-xl border border-white/[0.09] bg-white/[0.035] px-4 py-3 text-sm text-slate-300 transition hover:border-cyan-300/20 hover:bg-white/[0.055]"
+              className="group flex w-full items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.035] px-4 py-3 text-sm text-slate-300 hover:border-cyan-300/20 hover:bg-white/[0.055]"
             >
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.05]">
-                <Plus className="h-4 w-4 text-cyan-300 transition group-hover:scale-110" />
-              </span>
+              <Plus className="h-4 w-4 text-cyan-300 group-hover:scale-110" />
 
               New chat
             </button>
@@ -1118,8 +1069,8 @@ export default function QuantumChat({
           {/* SEARCH */}
 
           <div className="shrink-0 px-4 pt-5">
-            <div className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 transition focus-within:border-cyan-300/15">
-              <Search className="h-4 w-4 shrink-0 text-slate-600" />
+            <div className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
+              <Search className="h-4 w-4 text-slate-600" />
 
               <input
                 value={
@@ -1142,8 +1093,9 @@ export default function QuantumChat({
           {/* HISTORY */}
 
           <div className="quantum-scroll mt-7 min-h-0 flex-1 overflow-y-auto px-3">
-            <div className="mb-3 flex items-center gap-2 px-2 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-600">
+            <div className="mb-3 flex items-center gap-2 px-2 text-[10px] uppercase tracking-[0.18em] text-slate-600">
               <History className="h-3.5 w-3.5" />
+
               Recent
             </div>
 
@@ -1160,11 +1112,11 @@ export default function QuantumChat({
                   (
                     conversation
                   ) => {
-                    const menuOpen =
+                    const open =
                       openMenuId ===
                       conversation._id;
 
-                    const isRenaming =
+                    const renaming =
                       renamingId ===
                       conversation._id;
 
@@ -1173,20 +1125,10 @@ export default function QuantumChat({
                         key={
                           conversation._id
                         }
-                        className={`
-                          relative flex min-h-[44px] items-center rounded-xl
-                          transition
-                          ${
-                            conversationId ===
-                            conversation._id
-                              ? "bg-white/[0.055]"
-                              : "hover:bg-white/[0.03]"
-                          }
-                        `}
+                        className="relative flex min-h-[44px] items-center rounded-xl hover:bg-white/[0.03]"
                       >
-                        {isRenaming ? (
+                        {renaming ? (
                           <form
-                            className="flex w-full items-center gap-1 px-2 py-1.5"
                             onSubmit={(
                               event
                             ) => {
@@ -1196,6 +1138,7 @@ export default function QuantumChat({
                                 conversation._id
                               );
                             }}
+                            className="flex w-full items-center gap-1 px-2 py-1.5"
                           >
                             <input
                               autoFocus
@@ -1221,135 +1164,93 @@ export default function QuantumChat({
                                   cancelRename();
                                 }
                               }}
-                              className="min-w-0 flex-1 rounded-lg border border-cyan-300/15 bg-white/[0.04] px-2.5 py-1.5 text-xs text-slate-300 outline-none focus:border-cyan-300/30"
+                              className="min-w-0 flex-1 rounded-lg border border-cyan-300/20 bg-white/[0.04] px-2.5 py-1.5 text-xs text-slate-300 outline-none"
                             />
 
                             <button
                               type="submit"
-                              className="rounded-lg px-2 py-1.5 text-[10px] text-cyan-300 transition hover:bg-cyan-300/[0.06]"
+                              className="rounded-lg px-2 py-1.5 text-[10px] text-cyan-300 hover:bg-cyan-300/[0.06]"
                             >
                               Save
                             </button>
                           </form>
                         ) : (
                           <>
-                            {/* CHAT NAME */}
-
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={() =>
                                 void openConversation(
                                   conversation._id
-                                );
-                              }}
-                              className="min-w-0 flex-1 truncate px-3 py-2.5 text-left text-sm text-slate-500 transition hover:text-slate-300"
+                                )
+                              }
+                              className="min-w-0 flex-1 truncate px-3 py-2.5 text-left text-sm text-slate-500 hover:text-slate-300"
                             >
                               {
                                 conversation.title
                               }
                             </button>
 
-                            {/* THREE DOT BUTTON */}
-
                             <button
                               type="button"
-                              aria-label={`Options for ${conversation.title}`}
-                              title="Conversation options"
                               onPointerDown={(
                                 event
-                              ) => {
-                                event.stopPropagation();
-                              }}
+                              ) =>
+                                event.stopPropagation()
+                              }
                               onClick={(
                                 event
                               ) => {
                                 event.stopPropagation();
 
                                 setOpenMenuId(
-                                  (current) =>
+                                  (
+                                    current
+                                  ) =>
                                     current ===
                                     conversation._id
                                       ? null
                                       : conversation._id
                                 );
                               }}
-                              className={`
-                                mr-2
-                                flex h-8 w-8 shrink-0
-                                items-center justify-center
-                                rounded-lg
-                                transition
-                                ${
-                                  menuOpen
-                                    ? "bg-white/[0.08] text-slate-200"
-                                    : "text-slate-700 hover:bg-white/[0.06] hover:text-slate-300"
-                                }
-                              `}
+                              className={`mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                                open
+                                  ? "bg-white/[0.08] text-slate-200"
+                                  : "text-slate-700 hover:bg-white/[0.06] hover:text-slate-300"
+                              }`}
+                              aria-label="Conversation options"
                             >
                               <MoreHorizontal className="h-4 w-4" />
                             </button>
 
-                            {/* MENU */}
-
-                            {menuOpen && (
+                            {open && (
                               <div
                                 onPointerDown={(
                                   event
                                 ) =>
                                   event.stopPropagation()
                                 }
-                                onClick={(
-                                  event
-                                ) =>
-                                  event.stopPropagation()
-                                }
-                                className="
-                                  absolute
-                                  right-2
-                                  top-[46px]
-                                  z-[999]
-                                  w-40
-                                  overflow-hidden
-                                  rounded-2xl
-                                  border
-                                  border-white/[0.09]
-                                  bg-[#0b1020]/98
-                                  p-1
-                                  shadow-2xl
-                                  shadow-black/60
-                                  backdrop-blur-2xl
-                                "
+                                className="absolute right-2 top-[45px] z-[999] w-40 overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0a0f1d] p-1 shadow-2xl shadow-black/60"
                               >
                                 <button
                                   type="button"
-                                  onPointerDown={(
-                                    event
-                                  ) =>
-                                    event.stopPropagation()
-                                  }
-                                  onClick={() => {
-                                    beginRename(
+                                  onClick={() =>
+                                    startRename(
                                       conversation
-                                    );
-                                  }}
-                                  className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-xs text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-100"
+                                    )
+                                  }
+                                  className="w-full rounded-xl px-3 py-2.5 text-left text-xs text-slate-400 hover:bg-white/[0.06] hover:text-white"
                                 >
                                   Rename
                                 </button>
 
                                 <button
                                   type="button"
-                                  onPointerDown={(
-                                    event
-                                  ) =>
-                                    event.stopPropagation()
-                                  }
-                                  onClick={() => {
+                                  onClick={() =>
                                     void deleteConversation(
                                       conversation._id
-                                    );
-                                  }}
-                                  className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-xs text-red-400 transition hover:bg-red-400/[0.08]"
+                                    )
+                                  }
+                                  className="w-full rounded-xl px-3 py-2.5 text-left text-xs text-red-400 hover:bg-red-400/[0.08]"
                                 >
                                   Delete
                                 </button>
@@ -1368,33 +1269,29 @@ export default function QuantumChat({
           {/* SETTINGS */}
 
           <div className="shrink-0 border-t border-white/[0.06] p-4">
-            <button
-              type="button"
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-white/[0.035] hover:text-slate-400"
-            >
-              <Settings className="h-4 w-4" />
+            <a
+  href="/settings"
+  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-white/[0.035] hover:text-slate-300"
+>
+  <Settings className="h-4 w-4" />
 
-              Settings
-            </button>
+  Settings
+</a>
           </div>
         </div>
       </aside>
 
-      {/* ==================================================
-          MAIN
-      ================================================== */}
+      {/* MAIN */}
 
       <section className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 
-        {/* =================================================
-            TOP BAR
-        ================================================= */}
+        {/* TOP BAR */}
 
         <header className="flex h-[70px] shrink-0 items-center justify-between border-b border-white/[0.05] bg-black/10 px-4 backdrop-blur-2xl sm:px-6">
 
           <div className="flex items-center gap-3">
 
-            {/* MOBILE OPEN */}
+            {/* MOBILE */}
 
             <button
               type="button"
@@ -1403,13 +1300,13 @@ export default function QuantumChat({
                   true
                 )
               }
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-slate-500 transition hover:text-slate-200 lg:hidden"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-slate-500 lg:hidden"
               aria-label="Open sidebar"
             >
               <Menu className="h-4 w-4" />
             </button>
 
-            {/* DESKTOP OPEN */}
+            {/* DESKTOP */}
 
             {desktopSidebarCollapsed && (
               <button
@@ -1419,9 +1316,8 @@ export default function QuantumChat({
                     false
                   )
                 }
-                className="hidden h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-slate-500 transition hover:border-cyan-300/15 hover:text-cyan-300 lg:flex"
+                className="hidden h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-slate-500 hover:border-cyan-300/15 hover:text-cyan-300 lg:flex"
                 aria-label="Open sidebar"
-                title="Open sidebar"
               >
                 <PanelLeftOpen className="h-4 w-4" />
               </button>
@@ -1442,21 +1338,36 @@ export default function QuantumChat({
             </div>
           </div>
 
-          {/* STATUS */}
+          <div>
+            <div className="flex items-center gap-3">
+  <div className="hidden items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.025] px-3 py-1.5 text-[9px] tracking-[0.15em] text-slate-700 sm:flex">
+    <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
 
-          <div className="hidden items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.025] px-3 py-1.5 text-[9px] tracking-[0.15em] text-slate-700 sm:flex">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300" />
-            LIVE
+    LIVE
+  </div>
+
+  <UserButton
+    showName={false}
+    appearance={{
+      elements: {
+        avatarBox:
+          "h-8 w-8 border border-cyan-300/15 shadow-[0_0_20px_rgba(34,211,238,0.08)]",
+      },
+    }}
+  />
+</div>
           </div>
         </header>
 
-        {/* =================================================
-            CENTERED CHAT
-        ================================================= */}
+        {/* CHAT */}
 
         <div
-          ref={messageAreaRef}
-          onScroll={handleMessageScroll}
+          ref={
+            messageAreaRef
+          }
+          onScroll={
+            handleMessageScroll
+          }
           className="quantum-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-smooth"
         >
           {messages.length ===
@@ -1471,7 +1382,7 @@ export default function QuantumChat({
             />
           ) : (
             <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
-              <div className="space-y-10 pb-8">
+              <div className="space-y-10 pb-10">
 
                 {messages.map(
                   (
@@ -1499,48 +1410,54 @@ export default function QuantumChat({
                 )}
 
                 <div
-                  ref={bottomRef}
-                  className="h-3"
+                  ref={
+                    bottomRef
+                  }
+                  className="h-4"
                 />
               </div>
             </div>
           )}
         </div>
 
-        {/* =================================================
-            COMPOSER
-        ================================================= */}
+        {/* COMPOSER */}
 
-        <div className="shrink-0 border-t border-white/[0.05] bg-[#020617]/88 px-4 pb-4 pt-3 backdrop-blur-2xl sm:px-6">
+        <div className="shrink-0 border-t border-white/[0.05] bg-[#020617]/90 px-4 pb-4 pt-3 backdrop-blur-2xl sm:px-6">
           <div className="mx-auto w-full max-w-3xl">
 
-            <div className="relative overflow-hidden rounded-[24px] border border-white/[0.10] bg-white/[0.035] p-2 shadow-[0_0_70px_rgba(34,211,238,0.025)] backdrop-blur-2xl transition-all duration-200 focus-within:border-cyan-300/20 focus-within:shadow-[0_0_90px_rgba(34,211,238,0.07)]">
+            <div className="relative overflow-hidden rounded-[24px] border border-white/[0.10] bg-white/[0.035] p-2 shadow-[0_0_70px_rgba(34,211,238,0.025)] backdrop-blur-2xl focus-within:border-cyan-300/20 focus-within:shadow-[0_0_90px_rgba(34,211,238,0.07)]">
 
               <div className="pointer-events-none absolute left-1/2 top-0 h-px w-2/3 -translate-x-1/2 bg-gradient-to-r from-transparent via-cyan-300/40 to-transparent" />
 
               <textarea
-                ref={textareaRef}
-                value={message}
+                ref={
+                  textareaRef
+                }
+                value={
+                  message
+                }
                 onChange={(
                   event
                 ) =>
                   setMessage(
-                    event.target.value
+                    event.target
+                      .value
                   )
                 }
                 onKeyDown={
                   handleKeyDown
                 }
-                disabled={loading}
+                disabled={
+                  loading
+                }
                 rows={1}
                 placeholder="Ask Quantum anything..."
-                className="min-h-[48px] max-h-[140px] w-full resize-none overflow-y-auto bg-transparent px-4 py-3 text-[15px] leading-6 text-slate-200 outline-none placeholder:text-slate-600 disabled:opacity-50"
+                className="min-h-[48px] max-h-[140px] w-full resize-none overflow-y-auto bg-transparent px-4 py-3 text-[15px] leading-6 text-slate-200 outline-none placeholder:text-slate-600"
               />
 
               <div className="flex items-center justify-between px-2 pb-1 pt-1">
 
                 <div className="flex items-center gap-2">
-
                   <div className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/10 bg-cyan-300/[0.025] px-3 py-2 text-[11px] text-slate-500">
                     <Globe2 className="h-3.5 w-3.5 text-cyan-300" />
                     Live web
@@ -1548,14 +1465,14 @@ export default function QuantumChat({
 
                   {searchStatus ===
                     "searching" && (
-                    <span className="hidden text-[10px] text-cyan-300/70 sm:inline">
+                    <span className="text-[10px] text-cyan-300/70">
                       Searching...
                     </span>
                   )}
 
                   {searchStatus ===
                     "analyzing" && (
-                    <span className="hidden text-[10px] text-violet-300/70 sm:inline">
+                    <span className="text-[10px] text-violet-300/70">
                       Synthesizing...
                     </span>
                   )}
@@ -1570,7 +1487,7 @@ export default function QuantumChat({
                     loading ||
                     !message.trim()
                   }
-                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-black shadow-[0_0_30px_rgba(255,255,255,0.08)] transition hover:scale-105 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100"
+                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-black transition hover:scale-105 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100"
                   aria-label="Send message"
                 >
                   {loading ? (
@@ -1601,12 +1518,13 @@ function EmptyState({
   setMessage,
 }: {
   firstName: string;
+
   setMessage: (
     value: string
   ) => void;
 }) {
   return (
-    <div className="flex min-h-full w-full items-center justify-center">
+    <div className="flex min-h-full items-center justify-center">
       <div className="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6">
 
         <div className="relative mb-8 flex h-16 w-16 items-center justify-center">
@@ -1614,7 +1532,7 @@ function EmptyState({
 
           <div className="absolute h-16 w-16 rounded-full border border-cyan-300/15 animate-[spin_12s_linear_infinite]" />
 
-          <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.10] to-violet-500/[0.10] shadow-[0_0_50px_rgba(34,211,238,0.10)]">
+          <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.10] to-violet-500/[0.10]">
             <Sparkles className="h-6 w-6 text-cyan-200" />
           </div>
         </div>
@@ -1631,9 +1549,9 @@ function EmptyState({
         </h1>
 
         <p className="mt-5 max-w-2xl text-base leading-7 text-slate-500">
-          Search the live web, explore complex questions,
-          read pages, and get synthesized answers in one
-          intelligent workspace.
+          Search the live web, read pages, explore
+          complex questions, and get beautifully
+          structured answers.
         </p>
 
         <div className="mt-9 grid gap-3 sm:grid-cols-2">
@@ -1648,7 +1566,7 @@ function EmptyState({
           />
 
           <PromptCard
-            label="WEB ANALYSIS"
+            label="ANALYSIS"
             text="Compare Next.js and Remix."
             onClick={() =>
               setMessage(
@@ -1659,10 +1577,10 @@ function EmptyState({
 
           <PromptCard
             label="PAGE READING"
-            text="Read and explain a web page."
+            text="Read and explain this web page."
             onClick={() =>
               setMessage(
-                "Read and explain this page: https://nextjs.org/docs"
+                "Read and explain https://nextjs.org/docs"
               )
             }
           />
@@ -1683,7 +1601,7 @@ function EmptyState({
 }
 
 /* =========================================================
-   PROMPT CARD
+   PROMPTS
 ========================================================= */
 
 function PromptCard({
@@ -1699,17 +1617,17 @@ function PromptCard({
     <button
       type="button"
       onClick={onClick}
-      className="group rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-cyan-300/15 hover:bg-white/[0.04]"
+      className="group rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 text-left transition hover:-translate-y-0.5 hover:border-cyan-300/15 hover:bg-white/[0.04]"
     >
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-[9px] font-semibold tracking-[0.2em] text-slate-700 transition group-hover:text-cyan-300/60">
+        <span className="text-[9px] font-semibold tracking-[0.2em] text-slate-700 group-hover:text-cyan-300/60">
           {label}
         </span>
 
-        <Sparkles className="h-3.5 w-3.5 text-slate-700 transition group-hover:text-cyan-300" />
+        <Sparkles className="h-3.5 w-3.5 text-slate-700 group-hover:text-cyan-300" />
       </div>
 
-      <p className="text-sm leading-6 text-slate-400 transition group-hover:text-slate-200">
+      <p className="text-sm leading-6 text-slate-400 group-hover:text-slate-200">
         {text}
       </p>
     </button>
@@ -1717,7 +1635,7 @@ function PromptCard({
 }
 
 /* =========================================================
-   MESSAGE BUBBLE
+   MESSAGE
 ========================================================= */
 
 function MessageBubble({
@@ -1729,21 +1647,31 @@ function MessageBubble({
   copyCode,
 }: {
   item: Message;
+
   index: number;
-  copiedMessage: number | null;
-  copiedCode: string | null;
+
+  copiedMessage:
+    | number
+    | null;
+
+  copiedCode:
+    | string
+    | null;
+
   copyAnswer: (
     content: string,
     index: number
   ) => void;
+
   copyCode: (
     code: string,
     codeId: string
   ) => void;
 }) {
-  /* USER MESSAGE */
-
-  if (item.role === "user") {
+  if (
+    item.role ===
+    "user"
+  ) {
     return (
       <div className="flex justify-end">
         <div className="max-w-[82%] rounded-2xl rounded-br-md bg-white/[0.07] px-5 py-3.5 text-[15px] leading-7 text-slate-200">
@@ -1753,55 +1681,47 @@ function MessageBubble({
     );
   }
 
-  /* QUANTUM */
-
   return (
-    <article className="w-full">
-
-      {/* ==========================================
-          QUANTUM HEADER
-      ========================================== */}
+    <article>
+      {/* QUANTUM */}
 
       <div className="mb-4 flex items-center gap-2">
-        <div className="relative flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-300/15 bg-cyan-300/[0.07] shadow-[0_0_25px_rgba(34,211,238,0.06)]">
-          <div className="absolute inset-0 rounded-xl bg-cyan-300/10 blur-md" />
-
-          <Sparkles className="relative h-4 w-4 text-cyan-300" />
+        <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-300/15 bg-cyan-300/[0.07]">
+          <Sparkles className="h-4 w-4 text-cyan-300" />
         </div>
 
         <div>
-          <div className="text-xs font-semibold tracking-[0.15em] text-cyan-300">
+          <p className="text-xs font-semibold tracking-[0.15em] text-cyan-300">
             QUANTUM
-          </div>
+          </p>
 
-          <div className="text-[9px] text-slate-700">
+          <p className="text-[9px] text-slate-700">
             AI RESEARCH ASSISTANT
-          </div>
+          </p>
         </div>
       </div>
 
-      {/* ==========================================
-          LIVE RESEARCH
-      ========================================== */}
+      {/* RESEARCH */}
 
       {item.research &&
-        item.research.length > 0 && (
+        item.research.length >
+          0 && (
           <ResearchPanel
-            results={item.research}
+            results={
+              item.research
+            }
           />
         )}
 
-      {/* ==========================================
-          ANSWER CONTAINER
-      ========================================== */}
+      {/* ANSWER CARD */}
 
       <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.025] shadow-[0_20px_70px_rgba(0,0,0,0.16)]">
 
-        {/* ANSWER HEADER */}
+        {/* HEADER */}
 
         <div className="flex items-center justify-between border-b border-white/[0.06] bg-white/[0.018] px-5 py-3">
           <div className="flex items-center gap-2">
-            <div className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.8)]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.8)]" />
 
             <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
               Answer
@@ -1817,7 +1737,7 @@ function MessageBubble({
                   index
                 )
               }
-              className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-700 transition hover:bg-white/[0.05] hover:text-slate-300"
+              className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-700 hover:bg-white/[0.05] hover:text-slate-300"
             >
               {copiedMessage ===
               index ? (
@@ -1835,14 +1755,20 @@ function MessageBubble({
           )}
         </div>
 
-        {/* ANSWER BODY */}
+        {/* BODY */}
 
         <div className="p-5 sm:p-6">
           {item.content ? (
             <FormattedAnswer
-              content={item.content}
-              copiedCode={copiedCode}
-              copyCode={copyCode}
+              content={
+                item.content
+              }
+              copiedCode={
+                copiedCode
+              }
+              copyCode={
+                copyCode
+              }
             />
           ) : (
             <SearchProgress />
@@ -1850,12 +1776,11 @@ function MessageBubble({
         </div>
       </div>
 
-      {/* ==========================================
-          SOURCES
-      ========================================== */}
+      {/* SOURCES */}
 
       {item.sources &&
-        item.sources.length > 0 && (
+        item.sources.length >
+          0 && (
           <div className="mt-7">
             <div className="mb-3 flex items-center gap-2">
               <Globe2 className="h-3.5 w-3.5 text-cyan-300/70" />
@@ -1867,13 +1792,18 @@ function MessageBubble({
 
             <div className="grid gap-2 sm:grid-cols-2">
               {item.sources.map(
-                (source, index) => (
+                (
+                  source,
+                  index
+                ) => (
                   <a
                     key={`${source.url}-${index}`}
-                    href={source.url}
+                    href={
+                      source.url
+                    }
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="group flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.018] p-3 transition hover:border-cyan-300/15 hover:bg-white/[0.035]"
+                    className="group flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.018] p-3 hover:border-cyan-300/15 hover:bg-white/[0.035]"
                   >
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-300/[0.04]">
                       <Globe2 className="h-3.5 w-3.5 text-cyan-300/70" />
@@ -1881,15 +1811,19 @@ function MessageBubble({
 
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-medium text-slate-400 group-hover:text-white">
-                        {source.title}
+                        {
+                          source.title
+                        }
                       </p>
 
                       <p className="truncate text-[10px] text-slate-700">
-                        {source.url}
+                        {
+                          source.url
+                        }
                       </p>
                     </div>
 
-                    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-700 group-hover:text-cyan-300" />
+                    <ExternalLink className="h-3.5 w-3.5 text-slate-700 group-hover:text-cyan-300" />
                   </a>
                 )
               )}
@@ -1901,7 +1835,7 @@ function MessageBubble({
 }
 
 /* =========================================================
-   RESEARCH PANEL
+   RESEARCH
 ========================================================= */
 
 function ResearchPanel({
@@ -1918,9 +1852,7 @@ function ResearchPanel({
 
       <div className="flex items-center justify-between border-b border-white/[0.05] px-4 py-3">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-300/[0.06]">
-            <Globe2 className="h-3.5 w-3.5 text-cyan-300" />
-          </div>
+          <Globe2 className="h-4 w-4 text-cyan-300" />
 
           <div>
             <p className="text-xs font-medium text-cyan-200">
@@ -1928,7 +1860,7 @@ function ResearchPanel({
             </p>
 
             <p className="text-[10px] text-slate-700">
-              Current sources found by Quantum
+              Sources used by Quantum
             </p>
           </div>
         </div>
@@ -1951,7 +1883,7 @@ function ResearchPanel({
               }
               target="_blank"
               rel="noopener noreferrer"
-              className="group rounded-xl border border-white/[0.06] bg-black/20 p-3 transition hover:border-cyan-300/15 hover:bg-white/[0.03]"
+              className="group rounded-xl border border-white/[0.06] bg-black/20 p-3 hover:border-cyan-300/15 hover:bg-white/[0.03]"
             >
               <div className="flex gap-3">
                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-[10px] font-semibold text-cyan-300">
@@ -1980,7 +1912,7 @@ function ResearchPanel({
                   </p>
                 </div>
 
-                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-700 transition group-hover:text-cyan-300" />
+                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-700 group-hover:text-cyan-300" />
               </div>
             </a>
           )
@@ -1991,7 +1923,7 @@ function ResearchPanel({
 }
 
 /* =========================================================
-   MARKDOWN ANSWER
+   FORMATTED ANSWER
 ========================================================= */
 
 function FormattedAnswer({
@@ -2000,7 +1932,11 @@ function FormattedAnswer({
   copyCode,
 }: {
   content: string;
-  copiedCode: string | null;
+
+  copiedCode:
+    | string
+    | null;
+
   copyCode: (
     code: string,
     codeId: string
@@ -2008,16 +1944,11 @@ function FormattedAnswer({
 }) {
   return (
     <div className="quantum-answer overflow-x-auto text-[15px] leading-7 text-slate-300">
-
       <ReactMarkdown
         remarkPlugins={[
           remarkGfm,
         ]}
         components={{
-          /* ========================================
-             HEADINGS
-          ======================================== */
-
           h1({ children }) {
             return (
               <h1 className="mb-5 mt-0 text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl">
@@ -2028,7 +1959,7 @@ function FormattedAnswer({
 
           h2({ children }) {
             return (
-              <h2 className="mb-3 mt-8 text-xl font-bold leading-tight text-white sm:text-2xl">
+              <h2 className="mb-3 mt-8 text-xl font-bold text-white sm:text-2xl">
                 {children}
               </h2>
             );
@@ -2042,21 +1973,13 @@ function FormattedAnswer({
             );
           },
 
-          /* ========================================
-             PARAGRAPHS
-          ======================================== */
-
           p({ children }) {
             return (
-              <p className="mb-5 max-w-[72ch] text-[15px] leading-7 text-slate-300">
+              <p className="mb-5 max-w-[72ch] leading-7 text-slate-300">
                 {children}
               </p>
             );
           },
-
-          /* ========================================
-             STRONG
-          ======================================== */
 
           strong({ children }) {
             return (
@@ -2066,13 +1989,9 @@ function FormattedAnswer({
             );
           },
 
-          /* ========================================
-             LISTS
-          ======================================== */
-
           ul({ children }) {
             return (
-              <ul className="mb-5 space-y-2 pl-6 text-slate-300 marker:text-cyan-300">
+              <ul className="mb-5 space-y-2 pl-6 marker:text-cyan-300">
                 {children}
               </ul>
             );
@@ -2080,7 +1999,7 @@ function FormattedAnswer({
 
           ol({ children }) {
             return (
-              <ol className="mb-5 space-y-2 pl-6 text-slate-300 marker:text-cyan-300">
+              <ol className="mb-5 space-y-2 pl-6 marker:text-cyan-300">
                 {children}
               </ol>
             );
@@ -2088,15 +2007,11 @@ function FormattedAnswer({
 
           li({ children }) {
             return (
-              <li className="pl-1 leading-7">
+              <li className="pl-1">
                 {children}
               </li>
             );
           },
-
-          /* ========================================
-             BLOCKQUOTE
-          ======================================== */
 
           blockquote({ children }) {
             return (
@@ -2106,11 +2021,10 @@ function FormattedAnswer({
             );
           },
 
-          /* ========================================
-             LINKS
-          ======================================== */
-
-          a({ children, href }) {
+          a({
+            children,
+            href,
+          }) {
             return (
               <a
                 href={href}
@@ -2122,10 +2036,6 @@ function FormattedAnswer({
               </a>
             );
           },
-
-          /* ========================================
-             TABLE
-          ======================================== */
 
           table({ children }) {
             return (
@@ -2160,18 +2070,6 @@ function FormattedAnswer({
               </td>
             );
           },
-
-          tr({ children }) {
-            return (
-              <tr className="transition hover:bg-white/[0.018]">
-                {children}
-              </tr>
-            );
-          },
-
-          /* ========================================
-             CODE BLOCK
-          ======================================== */
 
           pre({ children }) {
             const child =
@@ -2210,15 +2108,16 @@ function FormattedAnswer({
               )}`;
 
             return (
-              <div className="my-7 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#030712] shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
-
-                <div className="flex items-center justify-between border-b border-white/[0.07] bg-white/[0.025] px-4 py-2.5">
+              <div className="my-7 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#030712]">
+                <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full bg-red-400/60" />
+
                     <span className="h-2.5 w-2.5 rounded-full bg-yellow-400/60" />
+
                     <span className="h-2.5 w-2.5 rounded-full bg-green-400/60" />
 
-                    <span className="ml-2 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-600">
+                    <span className="ml-2 text-[10px] uppercase tracking-[0.15em] text-slate-600">
                       {language}
                     </span>
                   </div>
@@ -2231,7 +2130,7 @@ function FormattedAnswer({
                         codeId
                       )
                     }
-                    className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-600 transition hover:bg-white/[0.05] hover:text-slate-300"
+                    className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-600 hover:bg-white/[0.05] hover:text-slate-300"
                   >
                     {copiedCode ===
                     codeId ? (
@@ -2259,10 +2158,6 @@ function FormattedAnswer({
             );
           },
 
-          /* ========================================
-             INLINE CODE
-          ======================================== */
-
           code({ children }) {
             return (
               <code className="rounded-md border border-cyan-300/10 bg-cyan-300/[0.05] px-1.5 py-0.5 font-mono text-[0.9em] text-cyan-300">
@@ -2270,10 +2165,6 @@ function FormattedAnswer({
               </code>
             );
           },
-
-          /* ========================================
-             HORIZONTAL RULE
-          ======================================== */
 
           hr() {
             return (
@@ -2289,7 +2180,7 @@ function FormattedAnswer({
 }
 
 /* =========================================================
-   SEARCH STATUS
+   STATUS
 ========================================================= */
 
 function SearchProgress() {
@@ -2297,22 +2188,23 @@ function SearchProgress() {
     <div className="flex items-center gap-3 text-sm text-slate-600">
       <div className="flex gap-1">
         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-300 [animation-delay:-0.3s]" />
+
         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-300 [animation-delay:-0.15s]" />
+
         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-300" />
       </div>
 
-      Just a sec...
+      Quantum is thinking...
     </div>
   );
 }
 
-/* =========================================================
-   HOSTNAME
-========================================================= */
-
-function getHostname(url: string) {
+function getHostname(
+  url: string
+) {
   try {
-    return new URL(url).hostname;
+    return new URL(url)
+      .hostname;
   } catch {
     return url;
   }

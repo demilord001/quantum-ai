@@ -22,17 +22,16 @@ export async function generateConversationTitle({
               role: "system",
 
               content: `
-Generate a short title for this conversation.
+Create a short title describing the main subject of a conversation.
 
 Rules:
-- Describe the subject.
-- Do not copy the first sentence.
+- 2 to 6 words.
+- Do not copy the user's sentence.
 - Do not make it a question.
 - Do not say "Chat about".
-- 2 to 6 words.
-- Clear and natural.
-- Title Case.
-- Return ONLY the title.
+- Do not use quotation marks.
+- Use Title Case.
+- Return only the title.
 `,
             },
 
@@ -40,22 +39,22 @@ Rules:
               role: "user",
 
               content: `
-USER:
+User:
 ${userMessage.slice(
   0,
-  2500
+  1400
 )}
 
-ASSISTANT:
+Answer:
 ${assistantAnswer.slice(
   0,
-  3000
+  1600
 )}
 `,
             },
           ],
 
-          temperature: 0.15,
+          temperature: 0.1,
 
           max_completion_tokens: 20,
         }
@@ -67,23 +66,22 @@ ${assistantAnswer.slice(
         ?.content
         ?.trim();
 
-    if (!title) {
-      return "New Chat";
-    }
-
-    return title
-      .replace(
-        /^["']|["']$/g,
-        ""
-      )
-      .replace(/\.$/, "")
-      .slice(0, 80);
+    return (
+      title
+        ?.replace(
+          /^["']|["']$/g,
+          ""
+        )
+        .replace(/\.$/, "")
+        .slice(0, 80) ||
+      "New Conversation"
+    );
   } catch (error) {
     console.error(
       "TITLE GENERATION ERROR:",
       error
     );
 
-    return "New conversation";
+    return "New Conversation";
   }
 }

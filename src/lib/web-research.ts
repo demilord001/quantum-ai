@@ -5,6 +5,10 @@ import {
 
 import { tvly } from "@/lib/tavily";
 
+/* =========================================================
+   TYPES
+========================================================= */
+
 export interface ResearchItem {
   title: string;
   url: string;
@@ -20,9 +24,7 @@ export interface ResearchItem {
 
 export interface WebResearchResult {
   query: string;
-
   searched: boolean;
-
   type:
     | "search"
     | "page"
@@ -37,21 +39,31 @@ export interface WebResearchResult {
   isYouTube?: boolean;
 }
 
-/*
- * Keep research small enough for fast model
- * processing.
- */
+/* =========================================================
+   LIMITS
+========================================================= */
 
-const MAX_RESULT_SNIPPET = 1200;
-const MAX_PAGE_CONTENT = 12000;
+const MAX_RESULTS = 5;
+
+const MAX_RESULT_CONTENT = 800;
+
+const MAX_PAGE_CONTENT = 5000;
+
+/* =========================================================
+   CLEAN TEXT
+========================================================= */
 
 function cleanText(
-  value: string
+  text: string
 ) {
-  return value
+  return text
     .replace(/\s+/g, " ")
     .trim();
 }
+
+/* =========================================================
+   TOPIC DETECTION
+========================================================= */
 
 function detectTopic(
   query: string
@@ -59,10 +71,12 @@ function detectTopic(
   const text =
     query.toLowerCase();
 
-  const financeSignals = [
+  const financeTerms = [
     "stock",
     "stocks",
+    "shares",
     "share price",
+    "market",
     "market cap",
     "forex",
     "crypto",
@@ -70,36 +84,35 @@ function detectTopic(
     "ethereum",
     "earnings",
     "revenue",
-    "financial",
     "finance",
+    "financial",
   ];
 
-  const newsSignals = [
+  const newsTerms = [
     "news",
-    "headline",
     "headlines",
+    "breaking",
     "what happened",
     "today",
     "yesterday",
     "this week",
     "this month",
-    "breaking",
     "current events",
   ];
 
   if (
-    financeSignals.some(
-      (signal) =>
-        text.includes(signal)
+    financeTerms.some(
+      (term) =>
+        text.includes(term)
     )
   ) {
     return "finance" as const;
   }
 
   if (
-    newsSignals.some(
-      (signal) =>
-        text.includes(signal)
+    newsTerms.some(
+      (term) =>
+        text.includes(term)
     )
   ) {
     return "news" as const;
@@ -107,6 +120,10 @@ function detectTopic(
 
   return "general" as const;
 }
+
+/* =========================================================
+   TIME RANGE
+========================================================= */
 
 function detectTimeRange(
   query: string
@@ -116,9 +133,9 @@ function detectTimeRange(
 
   if (
     text.includes("today") ||
+    text.includes("yesterday") ||
     text.includes("this morning") ||
-    text.includes("tonight") ||
-    text.includes("yesterday")
+    text.includes("tonight")
   ) {
     return "day";
   }
@@ -150,160 +167,217 @@ function detectTimeRange(
   return undefined;
 }
 
-/*
- * ================================================
- * DIRECT PAGE / URL
- * ================================================
- */
+/* =========================================================
+   DIRECT PAGE EXTRACTION
+========================================================= */
 
 async function extractPage(
   url: string,
-  query: string
+  userQuestion: string
 ): Promise<WebResearchResult> {
   const youtube =
     isYouTubeUrl(url);
 
-  const extraction =
-    await tvly.extract(
-      [url],
-      {
-        /*
-         * Advanced extraction is useful for harder
-         * pages, but it costs more and can be slower.
-         */
+  try {
+    /*
+     * IMPORTANT:
+     *
+     * Your installed @tavily/core version expects
+     * the URL array as the first argument.
+     *
+     * Correct:
+     *
+     * tvly.extract([url], options)
+     */
 
-        extractDepth:
-          youtube
-            ? "advanced"
-            : "basic",
-
-        format: "markdown",
-
-        query:
-          query || url,
-
-        chunksPerSource: 5,
-
-        includeFavicon: true,
-      }
-    );
-
-  const result =
-    extraction.results?.[0];
-
-  if (
-    result?.rawContent
-  ) {
-    return {
-      query,
-
-      searched: true,
-
-      type: "page",
-
-      pageUrl: url,
-
-      isYouTube: youtube,
-
-      extractedContent:
-        result.rawContent.slice(
-          0,
-          MAX_PAGE_CONTENT
-        ),
-
-      results: [
+    const extraction =
+      await tvly.extract(
+        [url],
         {
-          title:
+          extractDepth:
             youtube
-              ? "YouTube page"
-              : "Web page",
+              ? "advanced"
+              : "basic",
 
+          format: "markdown",
+
+          query:
+            userQuestion ||
+            url,
+
+          chunksPerSource: 4,
+
+          includeFavicon: true,
+        }
+      );
+
+    const page =
+      extraction.results?.[0];
+
+    /*
+     * Successful extraction
+     */
+
+    if (
+      page?.rawContent
+    ) {
+      const rawContent =
+        page.rawContent;
+
+      return {
+        query:
+          userQuestion ||
           url,
 
-          content:
-            cleanText(
-              result.rawContent
-            ).slice(
-              0,
-              MAX_RESULT_SNIPPET
-            ),
+        searched: true,
 
-          favicon:
-            result.favicon,
+        type: "page",
 
-          sourceType:
-            youtube
-              ? "youtube"
-              : "page",
-        },
-      ],
-    };
+        pageUrl: url,
+
+        isYouTube:
+          youtube,
+
+        extractedContent:
+          rawContent.slice(
+            0,
+            MAX_PAGE_CONTENT
+          ),
+
+        results: [
+          {
+            title:
+              youtube
+                ? "YouTube page"
+                : "Web page",
+
+            url,
+
+            content:
+              cleanText(
+                rawContent
+              ).slice(
+                0,
+                MAX_RESULT_CONTENT
+              ),
+
+            favicon:
+              page.favicon,
+
+            sourceType:
+              youtube
+                ? "youtube"
+                : "page",
+          },
+        ],
+      };
+    }
+  } catch (error) {
+    console.error(
+      "TAVILY EXTRACT ERROR:",
+      error
+    );
   }
 
   /*
-   * If extraction didn't return useful content,
-   * search the web as fallback.
+   * If extraction fails or produces no
+   * usable content, fall back to search.
    */
 
-  const fallback =
-    await tvly.search(
-      query,
-      {
-        searchDepth: "basic",
+  try {
+    const fallback =
+      await tvly.search(
+        userQuestion ||
+          url,
+        {
+          searchDepth:
+            "basic",
 
-        maxResults: 6,
+          maxResults:
+            MAX_RESULTS,
 
-        includeFavicon: true,
-      }
+          includeFavicon:
+            true,
+        }
+      );
+
+    return {
+      query:
+        userQuestion ||
+        url,
+
+      searched: true,
+
+      type: "search",
+
+      isYouTube:
+        youtube,
+
+      results:
+        fallback.results?.map(
+          (result) => ({
+            title:
+              result.title,
+
+            url:
+              result.url,
+
+            content:
+              cleanText(
+                result.content ||
+                  ""
+              ).slice(
+                0,
+                MAX_RESULT_CONTENT
+              ),
+
+            score:
+              result.score,
+
+            publishedDate:
+              result.publishedDate,
+
+            favicon:
+              result.favicon,
+
+            sourceType:
+              youtube
+                ? "youtube"
+                : "web",
+          })
+        ) || [],
+    };
+  } catch (error) {
+    console.error(
+      "TAVILY FALLBACK SEARCH ERROR:",
+      error
     );
 
-  return {
-    query,
+    /*
+     * Return an empty research result rather
+     * than crashing the entire Quantum request.
+     */
 
-    searched: true,
+    return {
+      query:
+        userQuestion ||
+        url,
 
-    type: "search",
+      searched: true,
 
-    isYouTube: youtube,
+      type: "search",
 
-    results:
-      fallback.results?.map(
-        (result) => ({
-          title:
-            result.title,
+      isYouTube:
+        youtube,
 
-          url:
-            result.url,
-
-          content:
-            cleanText(
-              result.content || ""
-            ).slice(
-              0,
-              MAX_RESULT_SNIPPET
-            ),
-
-          score:
-            result.score,
-
-          publishedDate:
-            result.publishedDate,
-
-          favicon:
-            result.favicon,
-
-          sourceType:
-            "youtube",
-        })
-      ) || [],
-  };
+      results: [],
+    };
+  }
 }
 
-/*
- * ================================================
- * WEB SEARCH
- * ================================================
- */
+/* =========================================================
+   NORMAL WEB SEARCH
+========================================================= */
 
 async function searchWeb(
   query: string
@@ -314,79 +388,103 @@ async function searchWeb(
   const timeRange =
     detectTimeRange(query);
 
-  const search =
-    await tvly.search(
+  try {
+    const result =
+      await tvly.search(
+        query,
+        {
+          /*
+           * Basic is cheaper/faster and is
+           * sufficient for the normal search path.
+           */
+          searchDepth:
+            "basic",
+
+          maxResults:
+            MAX_RESULTS,
+
+          topic,
+
+          ...(timeRange
+            ? {
+                timeRange,
+              }
+            : {}),
+
+          chunksPerSource: 2,
+
+          includeFavicon:
+            true,
+
+          /*
+           * Don't request huge raw pages
+           * during normal search.
+           */
+          includeRawContent:
+            false,
+        }
+      );
+
+    return {
       query,
-      {
-        searchDepth: "basic",
 
-        maxResults: 6,
+      searched: true,
 
-        topic,
+      type: "search",
 
-        ...(timeRange
-          ? {
-              timeRange,
-            }
-          : {}),
+      results:
+        result.results?.map(
+          (item) => ({
+            title:
+              item.title,
 
-        chunksPerSource: 3,
+            url:
+              item.url,
 
-        includeFavicon: true,
+            content:
+              cleanText(
+                item.content ||
+                  ""
+              ).slice(
+                0,
+                MAX_RESULT_CONTENT
+              ),
 
-        /*
-         * Don't request huge raw documents
-         * for a normal search.
-         */
+            score:
+              item.score,
 
-        includeRawContent: false,
-      }
+            publishedDate:
+              item.publishedDate,
+
+            favicon:
+              item.favicon,
+
+            sourceType:
+              "web",
+          })
+        ) || [],
+    };
+  } catch (error) {
+    console.error(
+      "TAVILY SEARCH ERROR:",
+      error
     );
 
-  return {
-    query,
+    return {
+      query,
 
-    searched: true,
+      searched: true,
 
-    type: "search",
+      type: "search",
 
-    results:
-      search.results?.map(
-        (result) => ({
-          title:
-            result.title,
-
-          url:
-            result.url,
-
-          content:
-            cleanText(
-              result.content || ""
-            ).slice(
-              0,
-              MAX_RESULT_SNIPPET
-            ),
-
-          score:
-            result.score,
-
-          publishedDate:
-            result.publishedDate,
-
-          favicon:
-            result.favicon,
-
-          sourceType: "web",
-        })
-      ) || [],
-  };
+      results: [],
+    };
+  }
 }
 
-/*
- * ================================================
- * MAIN
- * ================================================
- */
+/* =========================================================
+   MAIN RESEARCH FUNCTION
+========================================================= */
 
 export async function researchWeb(
   query: string
@@ -394,11 +492,23 @@ export async function researchWeb(
   const cleanQuery =
     query.trim();
 
+  /*
+   * Direct URL detection
+   */
+
   const directUrl =
-    extractUrl(cleanQuery);
+    extractUrl(
+      cleanQuery
+    );
 
   if (directUrl) {
-    const textWithoutUrl =
+    /*
+     * Remove the URL from the question so
+     * Tavily can focus on the user's actual
+     * request about that page.
+     */
+
+    const pageQuestion =
       cleanQuery
         .replace(
           directUrl,
@@ -408,10 +518,13 @@ export async function researchWeb(
 
     return extractPage(
       directUrl,
-      textWithoutUrl ||
-        cleanQuery
+      pageQuestion
     );
   }
+
+  /*
+   * Normal search
+   */
 
   return searchWeb(
     cleanQuery

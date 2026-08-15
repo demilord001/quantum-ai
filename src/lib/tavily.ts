@@ -1,6 +1,4 @@
-import {
-  tavily,
-} from "@tavily/core";
+import { tavily } from "@tavily/core";
 
 if (!process.env.TAVILY_API_KEY) {
   throw new Error(
