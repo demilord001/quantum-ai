@@ -1624,9 +1624,9 @@ function EmptyState({
         </p>
 
         <h1 className="mt-2 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-          Good morning,{" "}
+          What next,{" "}
           <span className="bg-gradient-to-r from-cyan-300 via-sky-300 to-violet-400 bg-clip-text text-transparent">
-            {firstName}
+            {firstName}?
           </span>
         </h1>
 
@@ -2139,7 +2139,7 @@ function SearchProgress() {
         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-300" />
       </div>
 
-      Quantum is thinking...
+      Just a sec...
     </div>
   );
 }
