@@ -8,6 +8,7 @@ import {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+
 import {
   ArrowUp,
   Check,
@@ -17,6 +18,7 @@ import {
   History,
   Loader2,
   Menu,
+  MoreHorizontal,
   Plus,
   Search,
   Settings,
@@ -25,7 +27,9 @@ import {
   X,
 } from "lucide-react";
 
-import { UserButton } from "@clerk/nextjs";
+/* =========================================================
+   TYPES
+========================================================= */
 
 interface Source {
   title: string;
@@ -40,6 +44,7 @@ interface ResearchResult {
   score?: number;
   publishedDate?: string;
   favicon?: string;
+  sourceType?: "web" | "page" | "youtube";
 }
 
 interface Message {
@@ -70,21 +75,23 @@ interface QuantumChatProps {
   firstName: string;
 }
 
+/* =========================================================
+   MAIN
+========================================================= */
+
 export default function QuantumChat({
   firstName,
 }: QuantumChatProps) {
   const [message, setMessage] = useState("");
-  const [messages, setMessages] =
-    useState<Message[]>([]);
-
-  const [conversations, setConversations] =
-    useState<Conversation[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [conversations, setConversations] = useState<
+    Conversation[]
+  >([]);
 
   const [conversationId, setConversationId] =
     useState<string | null>(null);
 
-  const [loading, setLoading] =
-    useState(false);
+  const [loading, setLoading] = useState(false);
 
   const [searchStatus, setSearchStatus] =
     useState<SearchStatus>("idle");
@@ -101,6 +108,18 @@ export default function QuantumChat({
   const [copiedCode, setCopiedCode] =
     useState<string | null>(null);
 
+  const [openMenuId, setOpenMenuId] =
+    useState<string | null>(null);
+
+  const [renamingId, setRenamingId] =
+    useState<string | null>(null);
+
+  const [renameValue, setRenameValue] =
+    useState("");
+
+  const [sidebarSearch, setSidebarSearch] =
+    useState("");
+
   const textareaRef =
     useRef<HTMLTextAreaElement | null>(null);
 
@@ -110,37 +129,37 @@ export default function QuantumChat({
   const bottomRef =
     useRef<HTMLDivElement | null>(null);
 
-  /* ======================================================
+  /* =======================================================
      LOAD CONVERSATIONS
-  ====================================================== */
+  ======================================================= */
 
-  const loadConversations =
-    useCallback(async () => {
+  const loadConversations = useCallback(
+    async () => {
       try {
         const response = await fetch(
           "/api/conversations",
           {
+            method: "GET",
             cache: "no-store",
           }
         );
 
         if (!response.ok) {
-          const errorData =
-            await response
-              .json()
-              .catch(() => null);
+          const data = await response
+            .json()
+            .catch(() => null);
 
           console.error(
             "Failed to load conversations:",
             response.status,
-            errorData
+            data
           );
 
           return;
         }
 
         const data =
-          await response.json();
+          (await response.json()) as Conversation[];
 
         if (Array.isArray(data)) {
           setConversations(data);
@@ -151,15 +170,39 @@ export default function QuantumChat({
           error
         );
       }
-    }, []);
+    },
+    []
+  );
 
   useEffect(() => {
     void loadConversations();
   }, [loadConversations]);
 
-  /* ======================================================
+  /* =======================================================
+     CLOSE MENU WHEN CLICKING ELSEWHERE
+  ======================================================= */
+
+  useEffect(() => {
+    function closeMenu() {
+      setOpenMenuId(null);
+    }
+
+    document.addEventListener(
+      "click",
+      closeMenu
+    );
+
+    return () => {
+      document.removeEventListener(
+        "click",
+        closeMenu
+      );
+    };
+  }, []);
+
+  /* =======================================================
      AUTO SCROLL
-  ====================================================== */
+  ======================================================= */
 
   useEffect(() => {
     if (!autoScroll) {
@@ -170,9 +213,17 @@ export default function QuantumChat({
       behavior: loading ? "auto" : "smooth",
       block: "end",
     });
-  }, [messages, loading, autoScroll]);
+  }, [
+    messages,
+    loading,
+    autoScroll,
+  ]);
 
-  function handleScroll() {
+  /* =======================================================
+     HANDLE MESSAGE SCROLL
+  ======================================================= */
+
+  function handleMessageScroll() {
     const container =
       messageAreaRef.current;
 
@@ -180,17 +231,19 @@ export default function QuantumChat({
       return;
     }
 
-    const distance =
+    const distanceFromBottom =
       container.scrollHeight -
       container.scrollTop -
       container.clientHeight;
 
-    setAutoScroll(distance < 160);
+    setAutoScroll(
+      distanceFromBottom < 160
+    );
   }
 
-  /* ======================================================
+  /* =======================================================
      NEW CHAT
-  ====================================================== */
+  ======================================================= */
 
   function startNewChat() {
     setConversationId(null);
@@ -198,6 +251,8 @@ export default function QuantumChat({
     setMessage("");
     setSearchStatus("idle");
     setAutoScroll(true);
+    setOpenMenuId(null);
+    setRenamingId(null);
     setSidebarOpen(false);
 
     setTimeout(() => {
@@ -205,29 +260,31 @@ export default function QuantumChat({
     }, 50);
   }
 
-  /* ======================================================
-     OPEN CHAT
-  ====================================================== */
+  /* =======================================================
+     OPEN CONVERSATION
+  ======================================================= */
 
   async function openConversation(
     id: string
   ) {
     try {
-      const response = await fetch(
-        `/api/conversations/${id}`,
-        {
-          cache: "no-store",
-        }
-      );
+      const response =
+        await fetch(
+          `/api/conversations/${id}`,
+          {
+            method: "GET",
+            cache: "no-store",
+          }
+        );
 
       if (!response.ok) {
-        const errorData =
+        const data =
           await response
             .json()
             .catch(() => null);
 
         throw new Error(
-          errorData?.error ||
+          data?.error ||
             "Unable to open conversation."
         );
       }
@@ -235,12 +292,23 @@ export default function QuantumChat({
       const data =
         await response.json();
 
-      setConversationId(data._id);
-      setMessages(data.messages || []);
+      setConversationId(
+        data._id
+      );
+
+      setMessages(
+        Array.isArray(
+          data.messages
+        )
+          ? data.messages
+          : []
+      );
+
       setMessage("");
       setSearchStatus("idle");
       setAutoScroll(true);
       setSidebarOpen(false);
+      setOpenMenuId(null);
 
       setTimeout(() => {
         textareaRef.current?.focus();
@@ -253,24 +321,31 @@ export default function QuantumChat({
     }
   }
 
-  /* ======================================================
-     DELETE CHAT
-  ====================================================== */
+  /* =======================================================
+     DELETE CONVERSATION
+  ======================================================= */
 
   async function deleteConversation(
     id: string
   ) {
     try {
-      const response = await fetch(
-        `/api/conversations/${id}`,
-        {
-          method: "DELETE",
-        }
-      );
+      const response =
+        await fetch(
+          `/api/conversations/${id}`,
+          {
+            method: "DELETE",
+          }
+        );
+
+      const data =
+        await response
+          .json()
+          .catch(() => null);
 
       if (!response.ok) {
         throw new Error(
-          "Unable to delete conversation."
+          data?.error ||
+            "Unable to delete conversation."
         );
       }
 
@@ -282,9 +357,13 @@ export default function QuantumChat({
           )
       );
 
-      if (conversationId === id) {
+      if (
+        conversationId === id
+      ) {
         startNewChat();
       }
+
+      setOpenMenuId(null);
     } catch (error) {
       console.error(
         "Delete conversation error:",
@@ -293,12 +372,100 @@ export default function QuantumChat({
     }
   }
 
-  /* ======================================================
-     SEND + STREAM
-  ====================================================== */
+  /* =======================================================
+     RENAME CONVERSATION
+  ======================================================= */
+
+  function beginRename(
+    conversation: Conversation
+  ) {
+    setRenameValue(
+      conversation.title
+    );
+
+    setRenamingId(
+      conversation._id
+    );
+
+    setOpenMenuId(null);
+  }
+
+  function cancelRename() {
+    setRenamingId(null);
+    setRenameValue("");
+  }
+
+  async function saveRename(
+    id: string
+  ) {
+    const title =
+      renameValue.trim();
+
+    if (!title) {
+      return;
+    }
+
+    try {
+      const response =
+        await fetch(
+          `/api/conversations/${id}`,
+          {
+            method: "PATCH",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              title,
+            }),
+          }
+        );
+
+      const data =
+        await response
+          .json()
+          .catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+            "Unable to rename conversation."
+        );
+      }
+
+      setConversations(
+        (previous) =>
+          previous.map(
+            (conversation) =>
+              conversation._id === id
+                ? {
+                    ...conversation,
+                    title:
+                      data.title ||
+                      title,
+                  }
+                : conversation
+          )
+      );
+
+      cancelRename();
+    } catch (error) {
+      console.error(
+        "Rename conversation error:",
+        error
+      );
+    }
+  }
+
+  /* =======================================================
+     STREAMING CHAT
+  ======================================================= */
 
   async function sendMessage() {
-    const text = message.trim();
+    const text =
+      message.trim();
 
     if (!text || loading) {
       return;
@@ -309,6 +476,11 @@ export default function QuantumChat({
         .toString(36)
         .slice(2)}`;
 
+    /*
+     * Previous history only.
+     * Current message is sent separately.
+     */
+
     const history =
       [...messages];
 
@@ -317,19 +489,20 @@ export default function QuantumChat({
       content: text,
     };
 
-    const assistantMessage: Message = {
-      role: "assistant",
-      content: "",
-      sources: [],
-      research: [],
-      streamId,
-    };
+    const assistantPlaceholder: Message =
+      {
+        role: "assistant",
+        content: "",
+        sources: [],
+        research: [],
+        streamId,
+      };
 
     setMessages(
       (previous) => [
         ...previous,
         userMessage,
-        assistantMessage,
+        assistantPlaceholder,
       ]
     );
 
@@ -339,23 +512,24 @@ export default function QuantumChat({
     setAutoScroll(true);
 
     try {
-      const response = await fetch(
-        "/api/chat",
-        {
-          method: "POST",
+      const response =
+        await fetch(
+          "/api/chat",
+          {
+            method: "POST",
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
 
-          body: JSON.stringify({
-            message: text,
-            conversationId,
-            history,
-          }),
-        }
-      );
+            body: JSON.stringify({
+              message: text,
+              conversationId,
+              history,
+            }),
+          }
+        );
 
       if (!response.ok) {
         let errorMessage =
@@ -369,7 +543,9 @@ export default function QuantumChat({
             errorMessage =
               data.error;
           }
-        } catch {}
+        } catch {
+          // Ignore non-JSON errors.
+        }
 
         throw new Error(
           errorMessage
@@ -378,7 +554,7 @@ export default function QuantumChat({
 
       if (!response.body) {
         throw new Error(
-          "Quantum returned no stream."
+          "Quantum returned no streaming response."
         );
       }
 
@@ -394,7 +570,8 @@ export default function QuantumChat({
         const {
           value,
           done,
-        } = await reader.read();
+        } =
+          await reader.read();
 
         if (done) {
           break;
@@ -409,7 +586,9 @@ export default function QuantumChat({
           );
 
         const events =
-          buffer.split("\n\n");
+          buffer.split(
+            "\n\n"
+          );
 
         buffer =
           events.pop() || "";
@@ -417,6 +596,10 @@ export default function QuantumChat({
         for (
           const event of events
         ) {
+          if (!event.trim()) {
+            continue;
+          }
+
           const dataLine =
             event
               .split("\n")
@@ -457,8 +640,17 @@ export default function QuantumChat({
             data =
               JSON.parse(payload);
           } catch {
+            console.warn(
+              "Invalid stream payload:",
+              payload
+            );
+
             continue;
           }
+
+          /* ==============================================
+             STATUS
+          ============================================== */
 
           if (
             data.type ===
@@ -472,10 +664,18 @@ export default function QuantumChat({
             continue;
           }
 
+          /* ==============================================
+             RESEARCH
+          ============================================== */
+
           if (
             data.type ===
             "research"
           ) {
+            const results =
+              data.results ||
+              [];
+
             setMessages(
               (previous) =>
                 previous.map(
@@ -490,8 +690,7 @@ export default function QuantumChat({
                     return {
                       ...item,
                       research:
-                        data.results ||
-                        [],
+                        results,
                     };
                   }
                 )
@@ -504,10 +703,18 @@ export default function QuantumChat({
             continue;
           }
 
+          /* ==============================================
+             SOURCES
+          ============================================== */
+
           if (
             data.type ===
             "sources"
           ) {
+            const sources =
+              data.sources ||
+              [];
+
             setMessages(
               (previous) =>
                 previous.map(
@@ -521,9 +728,7 @@ export default function QuantumChat({
 
                     return {
                       ...item,
-                      sources:
-                        data.sources ||
-                        [],
+                      sources,
                     };
                   }
                 )
@@ -532,6 +737,10 @@ export default function QuantumChat({
             continue;
           }
 
+          /* ==============================================
+             TEXT
+          ============================================== */
+
           if (
             data.type ===
             "chunk"
@@ -539,6 +748,10 @@ export default function QuantumChat({
             if (!data.text) {
               continue;
             }
+
+            setSearchStatus(
+              "analyzing"
+            );
 
             setMessages(
               (previous) =>
@@ -561,12 +774,12 @@ export default function QuantumChat({
                 )
             );
 
-            setSearchStatus(
-              "analyzing"
-            );
-
             continue;
           }
+
+          /* ==============================================
+             DONE
+          ============================================== */
 
           if (
             data.type ===
@@ -575,6 +788,10 @@ export default function QuantumChat({
             setConversationId(
               data.conversationId ||
                 null
+            );
+
+            setSearchStatus(
+              "done"
             );
 
             setMessages(
@@ -605,12 +822,14 @@ export default function QuantumChat({
                 )
             );
 
-            setSearchStatus("done");
-
             await loadConversations();
 
             continue;
           }
+
+          /* ==============================================
+             SERVER ERROR
+          ============================================== */
 
           if (
             data.type ===
@@ -629,6 +848,12 @@ export default function QuantumChat({
         error
       );
 
+      const errorMessage =
+        error instanceof
+          Error
+          ? error.message
+          : "Something went wrong.";
+
       setMessages(
         (previous) =>
           previous.map(
@@ -642,13 +867,9 @@ export default function QuantumChat({
 
               return {
                 ...item,
+
                 content:
-                  `**Quantum error**\n\n${
-                    error instanceof
-                    Error
-                      ? error.message
-                      : "Something went wrong."
-                  }`,
+                  `**Quantum error**\n\n${errorMessage}`,
               };
             }
           )
@@ -666,9 +887,9 @@ export default function QuantumChat({
     }
   }
 
-  /* ======================================================
-     ENTER
-  ====================================================== */
+  /* =======================================================
+     KEYBOARD
+  ======================================================= */
 
   function handleKeyDown(
     event: React.KeyboardEvent<HTMLTextAreaElement>
@@ -683,9 +904,9 @@ export default function QuantumChat({
     }
   }
 
-  /* ======================================================
-     COPY
-  ====================================================== */
+  /* =======================================================
+     COPY ANSWER
+  ======================================================= */
 
   async function copyAnswer(
     content: string,
@@ -701,8 +922,17 @@ export default function QuantumChat({
       setTimeout(() => {
         setCopiedMessage(null);
       }, 1500);
-    } catch {}
+    } catch (error) {
+      console.error(
+        "Copy answer failed:",
+        error
+      );
+    }
   }
+
+  /* =======================================================
+     COPY CODE
+  ======================================================= */
 
   async function copyCode(
     code: string,
@@ -718,19 +948,40 @@ export default function QuantumChat({
       setTimeout(() => {
         setCopiedCode(null);
       }, 1500);
-    } catch {}
+    } catch (error) {
+      console.error(
+        "Copy code failed:",
+        error
+      );
+    }
   }
 
-  /* ======================================================
-     UI
-  ====================================================== */
+  /* =======================================================
+     SEARCHED SIDEBAR
+  ======================================================= */
+
+  const filteredConversations =
+    conversations.filter(
+      (conversation) =>
+        conversation.title
+          .toLowerCase()
+          .includes(
+            sidebarSearch
+              .toLowerCase()
+              .trim()
+          )
+    );
+
+  /* =======================================================
+     RENDER
+  ======================================================= */
 
   return (
     <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-[#020617] text-white">
 
-      {/* ================================================
+      {/* ==================================================
           BACKGROUND
-      ================================================ */}
+      ================================================== */}
 
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute left-[30%] top-[-300px] h-[680px] w-[680px] rounded-full bg-cyan-400/[0.05] blur-[170px]" />
@@ -742,12 +993,12 @@ export default function QuantumChat({
           style={{
             backgroundImage: `
               linear-gradient(
-                rgba(255,255,255,0.025) 1px,
+                rgba(255,255,255,0.022) 1px,
                 transparent 1px
               ),
               linear-gradient(
                 90deg,
-                rgba(255,255,255,0.025) 1px,
+                rgba(255,255,255,0.022) 1px,
                 transparent 1px
               )
             `,
@@ -757,9 +1008,9 @@ export default function QuantumChat({
         />
       </div>
 
-      {/* ================================================
+      {/* ==================================================
           MOBILE BACKDROP
-      ================================================ */}
+      ================================================== */}
 
       {sidebarOpen && (
         <button
@@ -772,9 +1023,9 @@ export default function QuantumChat({
         />
       )}
 
-      {/* ================================================
+      {/* ==================================================
           SIDEBAR
-      ================================================ */}
+      ================================================== */}
 
       <aside
         className={`absolute inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-white/[0.07] bg-[#030712]/95 backdrop-blur-2xl transition-transform duration-300 lg:relative lg:translate-x-0 ${
@@ -785,7 +1036,7 @@ export default function QuantumChat({
       >
         <div className="flex h-full flex-col">
 
-          {/* LOGO */}
+          {/* BRAND */}
 
           <div className="flex h-[76px] shrink-0 items-center gap-3 px-5">
             <div className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-cyan-300/15 bg-cyan-300/[0.06]">
@@ -808,6 +1059,7 @@ export default function QuantumChat({
                 setSidebarOpen(false)
               }
               className="ml-auto text-slate-600 lg:hidden"
+              aria-label="Close sidebar"
             >
               <X className="h-4 w-4" />
             </button>
@@ -818,9 +1070,7 @@ export default function QuantumChat({
           <div className="shrink-0 px-4">
             <button
               type="button"
-              onClick={
-                startNewChat
-              }
+              onClick={startNewChat}
               className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm text-slate-300 transition hover:border-cyan-300/20 hover:bg-white/[0.06]"
             >
               <Plus className="h-4 w-4 text-cyan-300" />
@@ -829,7 +1079,7 @@ export default function QuantumChat({
             </button>
           </div>
 
-          {/* SEARCH */}
+          {/* SIDEBAR SEARCH */}
 
           <div className="shrink-0 px-4 pt-5">
             <div className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
@@ -837,6 +1087,17 @@ export default function QuantumChat({
 
               <input
                 type="text"
+                value={
+                  sidebarSearch
+                }
+                onChange={(
+                  event
+                ) =>
+                  setSidebarSearch(
+                    event.target
+                      .value
+                  )
+                }
                 placeholder="Search chats"
                 className="min-w-0 flex-1 bg-transparent text-sm text-slate-300 outline-none placeholder:text-slate-600"
               />
@@ -845,57 +1106,165 @@ export default function QuantumChat({
 
           {/* HISTORY */}
 
-          <div className="quantum-scroll mt-7 min-h-0 flex-1 overflow-y-auto px-4">
+          <div className="quantum-scroll mt-7 min-h-0 flex-1 overflow-y-auto px-3">
             <div className="mb-3 flex items-center gap-2 px-2 text-[10px] uppercase tracking-[0.18em] text-slate-600">
               <History className="h-3.5 w-3.5" />
+
               Recent
             </div>
 
-            {conversations.length ===
+            {filteredConversations.length ===
             0 ? (
               <p className="px-2 text-xs text-slate-700">
-                No conversations yet.
+                {sidebarSearch.trim()
+                  ? "No matching conversations."
+                  : "No conversations yet."}
               </p>
             ) : (
               <div className="space-y-1 pb-5">
-                {conversations.map(
-                  (conversation) => (
+                {filteredConversations.map(
+                  (
+                    conversation
+                  ) => (
                     <div
                       key={
                         conversation._id
                       }
-                      className={`group flex items-center rounded-xl ${
+                      className={`relative flex min-h-[42px] items-center rounded-xl transition ${
                         conversationId ===
                         conversation._id
                           ? "bg-white/[0.05]"
                           : "hover:bg-white/[0.03]"
                       }`}
                     >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void openConversation(
-                            conversation._id
-                          )
-                        }
-                        className="min-w-0 flex-1 truncate px-3 py-2.5 text-left text-sm text-slate-500 hover:text-slate-300"
-                      >
-                        {
-                          conversation.title
-                        }
-                      </button>
+                      {renamingId ===
+                      conversation._id ? (
+                        <form
+                          className="flex w-full items-center gap-1 px-2 py-1.5"
+                          onSubmit={(
+                            event
+                          ) => {
+                            event.preventDefault();
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void deleteConversation(
-                            conversation._id
-                          )
-                        }
-                        className="mr-2 hidden h-7 w-7 items-center justify-center rounded-lg text-slate-700 hover:bg-red-400/10 hover:text-red-300 group-hover:flex"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                            void saveRename(
+                              conversation._id
+                            );
+                          }}
+                        >
+                          <input
+                            autoFocus
+                            value={
+                              renameValue
+                            }
+                            onChange={(
+                              event
+                            ) =>
+                              setRenameValue(
+                                event
+                                  .target
+                                  .value
+                              )
+                            }
+                            onKeyDown={(
+                              event
+                            ) => {
+                              if (
+                                event.key ===
+                                "Escape"
+                              ) {
+                                cancelRename();
+                              }
+                            }}
+                            className="min-w-0 flex-1 rounded-lg border border-cyan-300/15 bg-white/[0.04] px-2.5 py-1.5 text-xs text-slate-300 outline-none focus:border-cyan-300/30"
+                          />
+
+                          <button
+                            type="submit"
+                            className="rounded-lg px-2 py-1.5 text-[10px] text-cyan-300 hover:bg-cyan-300/[0.06]"
+                          >
+                            Save
+                          </button>
+                        </form>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void openConversation(
+                                conversation._id
+                              )
+                            }
+                            className="min-w-0 flex-1 truncate px-3 py-2.5 text-left text-sm text-slate-500 hover:text-slate-300"
+                          >
+                            {
+                              conversation.title
+                            }
+                          </button>
+
+                          {/* THREE DOTS */}
+
+                          <button
+                            type="button"
+                            aria-label="Conversation options"
+                            onClick={(
+                              event
+                            ) => {
+                              event.stopPropagation();
+
+                              setOpenMenuId(
+                                (
+                                  current
+                                ) =>
+                                  current ===
+                                  conversation._id
+                                    ? null
+                                    : conversation._id
+                              );
+                            }}
+                            className="mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-700 transition hover:bg-white/[0.06] hover:text-slate-300"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </button>
+
+                          {/* MENU */}
+
+                          {openMenuId ===
+                            conversation._id && (
+                            <div
+                              onClick={(
+                                event
+                              ) =>
+                                event.stopPropagation()
+                              }
+                              className="absolute right-2 top-[42px] z-[100] w-36 overflow-hidden rounded-xl border border-white/[0.08] bg-[#0a0f1d] p-1 shadow-2xl shadow-black/50"
+                            >
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  beginRename(
+                                    conversation
+                                  )
+                                }
+                                className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-400 hover:bg-white/[0.05] hover:text-slate-200"
+                              >
+                                Rename
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void deleteConversation(
+                                    conversation._id
+                                  );
+                                }}
+                                className="w-full rounded-lg px-3 py-2 text-left text-xs text-red-400 hover:bg-red-400/[0.07]"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   )
                 )}
@@ -910,7 +1279,7 @@ export default function QuantumChat({
               type="button"
               className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 hover:bg-white/[0.035]"
             >
-              <UserButton />
+              <Settings className="h-4 w-4" />
 
               Settings
             </button>
@@ -918,9 +1287,9 @@ export default function QuantumChat({
         </div>
       </aside>
 
-      {/* ================================================
+      {/* ==================================================
           MAIN
-      ================================================ */}
+      ================================================== */}
 
       <section className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 
@@ -931,9 +1300,12 @@ export default function QuantumChat({
             <button
               type="button"
               onClick={() =>
-                setSidebarOpen(true)
+                setSidebarOpen(
+                  true
+                )
               }
               className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-slate-500 lg:hidden"
+              aria-label="Open sidebar"
             >
               <Menu className="h-4 w-4" />
             </button>
@@ -944,7 +1316,7 @@ export default function QuantumChat({
               </p>
 
               <div className="mt-1 flex items-center gap-2">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300" />
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.8)]" />
 
                 <span className="text-[10px] text-slate-600">
                   Live intelligence
@@ -953,21 +1325,23 @@ export default function QuantumChat({
             </div>
           </div>
 
-          <div className="hidden text-[10px] tracking-[0.15em] text-slate-700 sm:block">
+          <div className="hidden items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.025] px-3 py-1.5 text-[9px] tracking-[0.16em] text-slate-700 sm:flex">
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
+
             QUANTUM
           </div>
         </header>
 
-        {/* ================================================
-            CENTERED MESSAGE AREA
-        ================================================ */}
+        {/* ==================================================
+            CENTERED CHAT
+        ================================================== */}
 
         <div
           ref={
             messageAreaRef
           }
           onScroll={
-            handleScroll
+            handleMessageScroll
           }
           className="quantum-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-smooth"
         >
@@ -982,9 +1356,8 @@ export default function QuantumChat({
               }
             />
           ) : (
-            <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6 sm:py-12">
-              <div className="space-y-10 pb-12">
-
+            <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
+              <div className="space-y-10 pb-10">
                 {messages.map(
                   (
                     item,
@@ -1011,7 +1384,9 @@ export default function QuantumChat({
                 )}
 
                 <div
-                  ref={bottomRef}
+                  ref={
+                    bottomRef
+                  }
                   className="h-4"
                 />
               </div>
@@ -1019,14 +1394,13 @@ export default function QuantumChat({
           )}
         </div>
 
-        {/* ================================================
-            CENTERED COMPOSER
-        ================================================ */}
+        {/* ==================================================
+            COMPOSER
+        ================================================== */}
 
         <div className="shrink-0 border-t border-white/[0.05] bg-[#020617]/85 px-4 pb-4 pt-3 backdrop-blur-2xl sm:px-6">
           <div className="mx-auto w-full max-w-3xl">
-
-            <div className="relative overflow-hidden rounded-[24px] border border-white/[0.10] bg-white/[0.035] p-2 shadow-[0_0_70px_rgba(34,211,238,0.035)] backdrop-blur-2xl focus-within:border-cyan-300/20 focus-within:shadow-[0_0_90px_rgba(34,211,238,0.07)]">
+            <div className="relative overflow-hidden rounded-[24px] border border-white/[0.10] bg-white/[0.035] p-2 shadow-[0_0_70px_rgba(34,211,238,0.035)] backdrop-blur-2xl transition-all focus-within:border-cyan-300/20 focus-within:shadow-[0_0_90px_rgba(34,211,238,0.07)]">
 
               <div className="pointer-events-none absolute left-1/2 top-0 h-px w-2/3 -translate-x-1/2 bg-gradient-to-r from-transparent via-cyan-300/40 to-transparent" />
 
@@ -1037,10 +1411,11 @@ export default function QuantumChat({
                 value={
                   message
                 }
-                onChange={(event) =>
+                onChange={(
+                  event
+                ) =>
                   setMessage(
-                    event.target
-                      .value
+                    event.target.value
                   )
                 }
                 onKeyDown={
@@ -1051,13 +1426,14 @@ export default function QuantumChat({
                 }
                 rows={1}
                 placeholder="Ask Quantum anything..."
-                className="min-h-[48px] max-h-[140px] w-full resize-none overflow-y-auto bg-transparent px-4 py-3 text-[15px] leading-6 text-slate-200 outline-none placeholder:text-slate-600"
+                className="min-h-[48px] max-h-[140px] w-full resize-none overflow-y-auto bg-transparent px-4 py-3 text-[15px] leading-6 text-slate-200 outline-none placeholder:text-slate-600 disabled:opacity-50"
               />
 
               <div className="flex items-center justify-between px-2 pb-1 pt-1">
                 <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2 rounded-xl border border-cyan-300/10 bg-cyan-300/[0.025] px-3 py-2 text-[11px] text-slate-500">
+                  <div className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/10 bg-cyan-300/[0.025] px-3 py-2 text-[11px] text-slate-500">
                     <Globe2 className="h-3.5 w-3.5 text-cyan-300" />
+
                     Live web
                   </div>
 
@@ -1085,7 +1461,7 @@ export default function QuantumChat({
                     loading ||
                     !message.trim()
                   }
-                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-black transition hover:scale-105 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100"
+                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-black shadow-[0_0_30px_rgba(255,255,255,0.08)] transition hover:scale-105 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100"
                   aria-label="Send message"
                 >
                   {loading ? (
@@ -1125,15 +1501,13 @@ function EmptyState({
     <div className="flex min-h-full w-full items-center justify-center">
       <div className="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6">
 
-        <div className="mb-8">
-          <div className="relative flex h-16 w-16 items-center justify-center">
-            <div className="absolute inset-0 rounded-full bg-cyan-400/10 blur-2xl" />
+        <div className="relative mb-8 flex h-16 w-16 items-center justify-center">
+          <div className="absolute inset-0 rounded-full bg-cyan-400/10 blur-2xl" />
 
-            <div className="absolute h-16 w-16 rounded-full border border-cyan-300/15 animate-[spin_12s_linear_infinite]" />
+          <div className="absolute h-16 w-16 rounded-full border border-cyan-300/15 animate-[spin_12s_linear_infinite]" />
 
-            <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.10] to-violet-500/[0.10] shadow-[0_0_50px_rgba(34,211,238,0.10)]">
-              <Sparkles className="h-6 w-6 text-cyan-200" />
-            </div>
+          <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.10] to-violet-500/[0.10] shadow-[0_0_50px_rgba(34,211,238,0.10)]">
+            <Sparkles className="h-6 w-6 text-cyan-200" />
           </div>
         </div>
 
@@ -1142,7 +1516,7 @@ function EmptyState({
         </p>
 
         <h1 className="mt-2 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-          What next,{" "} ?
+          Good morning,{" "}
           <span className="bg-gradient-to-r from-cyan-300 via-sky-300 to-violet-400 bg-clip-text text-transparent">
             {firstName}
           </span>
@@ -1151,7 +1525,7 @@ function EmptyState({
         <p className="mt-5 max-w-2xl text-base leading-7 text-slate-500">
           Search the live web, explore complex
           questions, and get a synthesized answer
-          without leaving your workspace.
+          in one intelligent workspace.
         </p>
 
         <div className="mt-9 grid gap-3 sm:grid-cols-2">
@@ -1167,10 +1541,10 @@ function EmptyState({
 
           <PromptCard
             label="WEB ANALYSIS"
-            text="Research the latest web development trends."
+            text="Compare Next.js and Remix."
             onClick={() =>
               setMessage(
-                "Research the latest web development trends."
+                "Compare Next.js and Remix."
               )
             }
           />
@@ -1186,11 +1560,11 @@ function EmptyState({
           />
 
           <PromptCard
-            label="COMPARE"
-            text="Compare Next.js with other frameworks."
+            label="RESEARCH"
+            text="Research the best backend frameworks for startups."
             onClick={() =>
               setMessage(
-                "Compare Next.js with other frameworks."
+                "Research the best backend frameworks for startups."
               )
             }
           />
@@ -1235,7 +1609,7 @@ function PromptCard({
 }
 
 /* =========================================================
-   MESSAGE BUBBLE
+   MESSAGE
 ========================================================= */
 
 function MessageBubble({
@@ -1301,42 +1675,38 @@ function MessageBubble({
           />
         )}
 
-      <div>
-        {item.content ? (
-          <FormattedAnswer
-            content={
-              item.content
-            }
-            copiedCode={
-              copiedCode
-            }
-            copyCode={
-              copyCode
-            }
-          />
-        ) : (
-          <SearchProgress
-            status="analyzing"
-          />
-        )}
-      </div>
+      {item.content ? (
+        <FormattedAnswer
+          content={
+            item.content
+          }
+          copiedCode={
+            copiedCode
+          }
+          copyCode={
+            copyCode
+          }
+        />
+      ) : (
+        <SearchProgress />
+      )}
 
       {item.sources &&
         item.sources.length >
           0 && (
           <div className="mt-7">
-            <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-600">
+            <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-600">
               Sources
-            </div>
+            </p>
 
             <div className="grid gap-2 sm:grid-cols-2">
               {item.sources.map(
                 (
                   source,
-                  sourceIndex
+                  index
                 ) => (
                   <a
-                    key={`${source.url}-${sourceIndex}`}
+                    key={`${source.url}-${index}`}
                     href={
                       source.url
                     }
@@ -1362,7 +1732,7 @@ function MessageBubble({
                       </p>
                     </div>
 
-                    <ExternalLink className="h-3.5 w-3.5 text-slate-700 group-hover:text-cyan-300" />
+                    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-700 group-hover:text-cyan-300" />
                   </a>
                 )
               )}
@@ -1375,7 +1745,7 @@ function MessageBubble({
           <button
             type="button"
             onClick={() =>
-              copyAnswer(
+              void copyAnswer(
                 item.content,
                 index
               )
@@ -1410,8 +1780,12 @@ function ResearchPanel({
 }: {
   results: ResearchResult[];
 }) {
+  if (!results.length) {
+    return null;
+  }
+
   return (
-    <div className="mb-5 rounded-2xl border border-cyan-300/[0.10] bg-cyan-300/[0.025]">
+    <div className="mb-5 overflow-hidden rounded-2xl border border-cyan-300/[0.10] bg-cyan-300/[0.025]">
       <div className="flex items-center justify-between border-b border-white/[0.05] px-4 py-3">
         <div className="flex items-center gap-2">
           <Globe2 className="h-4 w-4 text-cyan-300" />
@@ -1434,10 +1808,7 @@ function ResearchPanel({
 
       <div className="grid gap-2 p-3 sm:grid-cols-2">
         {results.map(
-          (
-            result,
-            index
-          ) => (
+          (result, index) => (
             <a
               key={`${result.url}-${index}`}
               href={
@@ -1485,7 +1856,7 @@ function ResearchPanel({
 }
 
 /* =========================================================
-   FORMATTED MARKDOWN
+   MARKDOWN
 ========================================================= */
 
 function FormattedAnswer({
@@ -1529,8 +1900,7 @@ function FormattedAnswer({
 
             const code =
               String(
-                child?.props
-                  ?.children ||
+                child?.props?.children ||
                   ""
               ).replace(
                 /\n$/,
@@ -1540,7 +1910,7 @@ function FormattedAnswer({
             const codeId =
               `${language}-${code.slice(
                 0,
-                40
+                50
               )}`;
 
             return (
@@ -1583,7 +1953,9 @@ function FormattedAnswer({
 
                 <div className="quantum-scroll overflow-x-auto p-5">
                   <pre className="m-0 bg-transparent p-0 font-mono text-[13px] leading-6 text-slate-300">
-                    <code>{code}</code>
+                    <code>
+                      {code}
+                    </code>
                   </pre>
                 </div>
               </div>
@@ -1593,7 +1965,7 @@ function FormattedAnswer({
           table({ children }) {
             return (
               <div className="quantum-scroll my-6 overflow-x-auto rounded-xl border border-white/[0.07]">
-                <table className="m-0 min-w-[600px]">
+                <table className="m-0 min-w-[620px]">
                   {children}
                 </table>
               </div>
@@ -1620,40 +1992,10 @@ function FormattedAnswer({
 }
 
 /* =========================================================
-   STATUS
+   SEARCH STATUS
 ========================================================= */
 
-function SearchProgress({
-  status,
-}: {
-  status: SearchStatus;
-}) {
-  if (status === "searching") {
-    return (
-      <div className="flex items-center gap-3 text-sm text-slate-500">
-        <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />
-        Just a sec...
-      </div>
-    );
-  }
-
-  if (status === "analyzing") {
-    return (
-      <div className="flex items-center gap-3 text-sm text-slate-500">
-        <Sparkles className="h-4 w-4 animate-pulse text-cyan-300" />
-        Just a sec...
-      </div>
-    );
-  }
-
-  if (status === "error") {
-    return (
-      <div className="text-sm text-red-300">
-        Quantum encountered an error.
-      </div>
-    );
-  }
-
+function SearchProgress() {
   return (
     <div className="flex items-center gap-3 text-sm text-slate-600">
       <div className="flex gap-1">
@@ -1662,13 +2004,13 @@ function SearchProgress({
         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-300" />
       </div>
 
-      Just a sec...
+      Quantum is thinking...
     </div>
   );
 }
 
 /* =========================================================
-   UTILS
+   HOSTNAME
 ========================================================= */
 
 function getHostname(url: string) {

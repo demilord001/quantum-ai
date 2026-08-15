@@ -3,56 +3,111 @@ import { ObjectId } from "mongodb";
 import { auth } from "@clerk/nextjs/server";
 
 import { groq } from "@/lib/groq";
-import { tvly } from "@/lib/tavily";
-import { shouldSearch } from "@/lib/search-decision";
 import clientPromise from "@/lib/mongodb";
 
-import { generateConversationTitle } from "@/lib/generate-title";
+import {
+  researchWeb,
+  type ResearchItem,
+} from "@/lib/web-research";
+
+import {
+  shouldSearch,
+} from "@/lib/search-decision";
+
+import {
+  generateConversationTitle,
+} from "@/lib/generate-title";
 
 export const runtime = "nodejs";
 
 interface ClientMessage {
-  role: "user" | "assistant";
+  role:
+    | "user"
+    | "assistant";
   content: string;
 }
 
-function compactResearch(results: any[]) {
-  return results
-    .slice(0, 5)
-    .map(
-      (result, index) => `
+function compactResearch(
+  results: ResearchItem[],
+  extractedContent?: string
+) {
+  const resultText =
+    results
+      .slice(0, 6)
+      .map(
+        (result, index) => `
 SOURCE ${index + 1}
-Title: ${result.title}
-URL: ${result.url}
-Summary: ${(result.content || "").slice(0, 1600)}
+
+Title:
+${result.title}
+
+URL:
+${result.url}
+
+Content:
+${(result.content || "").slice(
+  0,
+  1400
+)}
 `
-    )
-    .join("\n\n");
+      )
+      .join("\n\n");
+
+  const pageText =
+    extractedContent
+      ? `
+
+DIRECT PAGE CONTENT:
+
+${extractedContent.slice(
+  0,
+  7000
+)}
+`
+      : "";
+
+  return (
+    resultText +
+    pageText
+  );
 }
 
 export async function POST(
   request: NextRequest
 ) {
-  const encoder = new TextEncoder();
+  const encoder =
+    new TextEncoder();
 
   const sendEvent = (
-    controller: ReadableStreamDefaultController,
+    controller:
+      ReadableStreamDefaultController,
     data: unknown
   ) => {
     controller.enqueue(
       encoder.encode(
-        `data: ${JSON.stringify(data)}\n\n`
+        `data: ${JSON.stringify(
+          data
+        )}\n\n`
       )
     );
   };
 
   try {
+    /*
+     * ==========================================
+     * AUTH
+     * ==========================================
+     */
+
     const {
       isAuthenticated,
       userId,
     } = await auth();
 
-    if (!isAuthenticated || !userId) {
+    if (
+      !isAuthenticated ||
+      !userId
+    ) {
       return new Response(
         JSON.stringify({
           error:
@@ -68,17 +123,27 @@ export async function POST(
       );
     }
 
+    /*
+     * ==========================================
+     * BODY
+     * ==========================================
+     */
+
     const body =
       await request.json();
 
     const message =
-      String(body.message || "").trim();
+      String(
+        body.message || ""
+      ).trim();
 
     const conversationId =
-      body.conversationId || null;
+      body.conversationId ||
+      null;
 
     const history =
-      (body.history as ClientMessage[]) || [];
+      (body.history ||
+        []) as ClientMessage[];
 
     if (!message) {
       return new Response(
@@ -97,66 +162,68 @@ export async function POST(
     }
 
     /*
-     * Create the stream FIRST.
-     *
-     * This lets the browser immediately receive
-     * "searching" instead of waiting for Tavily.
+     * ==========================================
+     * SEARCH DECISION
+     * ==========================================
+     */
+
+    const needsSearch =
+      shouldSearch(message);
+
+    /*
+     * ==========================================
+     * STREAM
+     * ==========================================
      */
 
     const stream =
       new ReadableStream({
-        async start(controller) {
+        async start(
+          controller
+        ) {
           let fullAnswer = "";
 
+          let researchData =
+            null as
+              | Awaited<
+                  ReturnType<
+                    typeof researchWeb
+                  >
+                >
+              | null;
+
           try {
-            const needsSearch =
-              shouldSearch(message);
-
-            let searchResults: any[] = [];
-
             /*
-             * ==========================================
+             * ========================================
              * IMMEDIATE STATUS
-             * ==========================================
+             * ========================================
              */
 
             sendEvent(
               controller,
               {
                 type: "status",
-                status: needsSearch
-                  ? "searching"
-                  : "thinking",
+                status:
+                  needsSearch
+                    ? "searching"
+                    : "thinking",
               }
             );
 
             /*
-             * ==========================================
-             * TAVILY
-             * ==========================================
+             * ========================================
+             * WEB RESEARCH
+             * ========================================
              */
 
             if (needsSearch) {
-              console.log(
-                "Quantum: searching Tavily..."
-              );
-
-              const search =
-                await tvly.search(
-                  message,
-                  {
-                    searchDepth:
-                      "basic",
-                    maxResults: 5,
-                  }
+              researchData =
+                await researchWeb(
+                  message
                 );
 
-              searchResults =
-                search.results || [];
-
               /*
-               * Send actual search results
-               * to the browser BEFORE Groq.
+               * Show research BEFORE Groq
                */
 
               sendEvent(
@@ -164,60 +231,36 @@ export async function POST(
                 {
                   type: "research",
                   results:
-                    searchResults.map(
-                      (result) => ({
-                        title:
-                          result.title,
-                        url:
-                          result.url,
-                        content:
-                          (
-                            result.content ||
-                            ""
-                          ).slice(
-                            0,
-                            500
-                          ),
-                        score:
-                          result.score,
-                        publishedDate:
-                          result.publishedDate,
-                        favicon:
-                          result.favicon,
-                      })
-                    ),
+                    researchData.results,
+                  pageUrl:
+                    researchData.pageUrl,
+                  isYouTube:
+                    researchData.isYouTube,
+                  researchType:
+                    researchData.type,
                 }
               );
+
+              /*
+               * ========================================
+               * ANALYZING
+               * ========================================
+               */
 
               sendEvent(
                 controller,
                 {
                   type: "status",
-                  status: "analyzing",
+                  status:
+                    "analyzing",
                 }
               );
             }
 
             /*
-             * ==========================================
-             * PREPARE RESEARCH FOR GROQ
-             * ==========================================
-             *
-             * We intentionally truncate web content.
-             * Smaller input = better responsiveness.
-             */
-
-            const researchContext =
-              needsSearch
-                ? compactResearch(
-                    searchResults
-                  )
-                : "";
-
-            /*
-             * ==========================================
-             * CONVERSATION CONTEXT
-             * ==========================================
+             * ========================================
+             * CONTEXT
+             * ========================================
              */
 
             const previousMessages =
@@ -225,7 +268,8 @@ export async function POST(
                 .slice(-8)
                 .map(
                   (item) => ({
-                    role: item.role,
+                    role:
+                      item.role,
                     content:
                       item.content.slice(
                         0,
@@ -235,55 +279,94 @@ export async function POST(
                 );
 
             /*
-             * ==========================================
+             * ========================================
+             * CURRENT DATE
+             * ========================================
+             */
+
+            const currentDate =
+              new Date()
+                .toISOString()
+                .slice(0, 10);
+
+            /*
+             * ========================================
              * SYSTEM PROMPT
-             * ==========================================
+             * ========================================
              */
 
             const systemPrompt = `
 You are Quantum AI.
 
-You are a fast, intelligent AI research assistant.
+Current date:
+${currentDate}
 
-Rules:
+You are a fast, current, research-oriented AI assistant.
 
-- Answer directly.
-- Be accurate.
-- Do not invent sources.
-- Maintain conversation context.
-- If current web research is provided, use it.
-- Do not claim you searched the web unless research was provided.
-- Use Markdown.
-- Use tables when useful.
-- Format code using fenced Markdown.
-- Do not unnecessarily repeat the research.
-- Keep the final answer focused and useful.
-- Be precise and professional.
-- Read the internet. It is a must
+RULES:
+
+1. Use supplied web research whenever it exists.
+2. Do not pretend you searched if no research exists.
+3. Never invent URLs or sources.
+4. Distinguish facts from inference.
+5. Prefer current web evidence over stale model knowledge.
+6. Maintain conversation context.
+7. Use clear Markdown formatting.
+8. Use headings when useful.
+9. Use bullet lists when useful.
+10. Use comparison tables when useful.
+11. Use fenced code blocks for code.
+12. Keep answers direct but sufficiently detailed.
+13. When sources are supplied, reference them with [1], [2], [3] where appropriate.
+14. If a supplied page is a YouTube page, do not claim to have watched or transcribed the video unless the supplied page content actually contains that information.
 `;
+
+            /*
+             * ========================================
+             * USER PROMPT
+             * ========================================
+             */
 
             let userPrompt =
               message;
 
-            if (researchContext) {
+            if (
+              researchData
+            ) {
               userPrompt = `
-USER QUESTION:
+USER REQUEST:
 
 ${message}
 
 LIVE WEB RESEARCH:
 
-${researchContext}
+${compactResearch(
+  researchData.results,
+  researchData.extractedContent
+)}
 
-Use the supplied research to answer the question.
-Cite the relevant source numbers naturally when useful,
-for example [1] or [2].
+Answer the user's request using the supplied research.
+
+If the research is about a specific page or URL,
+prioritize that page.
+
+If sources conflict, explain the conflict instead
+of silently choosing one.
+
+Use [1], [2], etc. when citing supplied sources.
 `;
             }
 
+            /*
+             * ========================================
+             * GROQ
+             * ========================================
+             */
+
             const groqMessages = [
               {
-                role: "system" as const,
+                role:
+                  "system" as const,
                 content:
                   systemPrompt,
               },
@@ -291,21 +374,12 @@ for example [1] or [2].
               ...previousMessages,
 
               {
-                role: "user" as const,
+                role:
+                  "user" as const,
                 content:
                   userPrompt,
               },
             ];
-
-            /*
-             * ==========================================
-             * GROQ STREAM
-             * ==========================================
-             */
-
-            console.log(
-              "Quantum: starting Groq..."
-            );
 
             const groqStream =
               await groq.chat.completions.create(
@@ -318,11 +392,17 @@ for example [1] or [2].
 
                   stream: true,
 
-                  temperature: 0.3,
+                  temperature: 0.25,
 
-                  max_tokens: 1800,
+                  max_tokens: 2200,
                 }
               );
+
+            /*
+             * ========================================
+             * STREAM
+             * ========================================
+             */
 
             for await (
               const chunk of groqStream
@@ -331,7 +411,8 @@ for example [1] or [2].
                 chunk
                   .choices[0]
                   ?.delta
-                  ?.content || "";
+                  ?.content ||
+                "";
 
               if (!text) {
                 continue;
@@ -350,9 +431,9 @@ for example [1] or [2].
             }
 
             /*
-             * ==========================================
-             * SAVE TO MONGODB
-             * ==========================================
+             * ========================================
+             * MONGODB
+             * ========================================
              */
 
             const client =
@@ -365,16 +446,19 @@ for example [1] or [2].
               );
 
             const sources =
-              searchResults.map(
-                (result) => ({
-                  title:
-                    result.title,
-                  url:
-                    result.url,
-                  favicon:
-                    result.favicon,
-                })
-              );
+              researchData?.results
+                ?.map(
+                  (
+                    result
+                  ) => ({
+                    title:
+                      result.title,
+                    url:
+                      result.url,
+                    favicon:
+                      result.favicon,
+                  })
+                ) || [];
 
             const userMessage = {
               role: "user",
@@ -389,6 +473,10 @@ for example [1] or [2].
                 content:
                   fullAnswer,
                 sources,
+                research:
+                  researchData
+                    ?.results ||
+                  [],
                 createdAt:
                   new Date(),
               };
@@ -396,7 +484,15 @@ for example [1] or [2].
             let savedConversationId =
               conversationId;
 
-            if (conversationId) {
+            /*
+             * ========================================
+             * EXISTING CHAT
+             * ========================================
+             */
+
+            if (
+              conversationId
+            ) {
               if (
                 !ObjectId.isValid(
                   conversationId
@@ -407,7 +503,7 @@ for example [1] or [2].
                 );
               }
 
-              const result =
+              const updated =
                 await db
                   .collection(
                     "conversations"
@@ -421,16 +517,14 @@ for example [1] or [2].
                       userId,
                     },
                     {
-                      $push:
-                        {
-                          messages:
-                            {
-                              $each: [
-                                userMessage,
-                                assistantMessage,
-                              ],
-                            },
-                        } as any,
+                      $push: {
+                        messages: {
+                          $each: [
+                            userMessage,
+                            assistantMessage,
+                          ],
+                        },
+                      } as any,
 
                       $set: {
                         updatedAt:
@@ -440,7 +534,7 @@ for example [1] or [2].
                   );
 
               if (
-                result.matchedCount ===
+                updated.matchedCount ===
                 0
               ) {
                 throw new Error(
@@ -448,34 +542,53 @@ for example [1] or [2].
                 );
               }
             } else {
-              const title =
-  await generateConversationTitle({
-    userMessage: message,
-    assistantAnswer: fullAnswer,
-  });
+              /*
+               * ======================================
+               * NEW CHAT
+               * ======================================
+               */
 
-              const result =
-  await db
-    .collection("conversations")
-    .insertOne({
-      userId,
-      title,
-      messages: [
-        userMessage,
-        assistantMessage,
-      ],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
+              const title =
+                await generateConversationTitle(
+                  {
+                    userMessage:
+                      message,
+
+                    assistantAnswer:
+                      fullAnswer,
+                  }
+                );
+
+              const created =
+                await db
+                  .collection(
+                    "conversations"
+                  )
+                  .insertOne({
+                    userId,
+
+                    title,
+
+                    messages: [
+                      userMessage,
+                      assistantMessage,
+                    ],
+
+                    createdAt:
+                      new Date(),
+
+                    updatedAt:
+                      new Date(),
+                  });
 
               savedConversationId =
-                result.insertedId.toString();
+                created.insertedId.toString();
             }
 
             /*
-             * ==========================================
-             * FINISHED
-             * ==========================================
+             * ========================================
+             * DONE
+             * ========================================
              */
 
             sendEvent(
@@ -505,7 +618,8 @@ for example [1] or [2].
               {
                 type: "error",
                 error:
-                  error instanceof Error
+                  error instanceof
+                    Error
                     ? error.message
                     : "Quantum failed.",
               }
@@ -543,7 +657,8 @@ for example [1] or [2].
     return new Response(
       JSON.stringify({
         error:
-          error instanceof Error
+          error instanceof
+            Error
             ? error.message
             : "Quantum failed.",
       }),

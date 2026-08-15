@@ -6,23 +6,15 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    console.log(
-      "========== QUANTUM CONVERSATIONS =========="
-    );
-
-    // -----------------------------------------
-    // CLERK
-    // -----------------------------------------
-
     const {
       isAuthenticated,
       userId,
     } = await auth();
 
-    console.log("isAuthenticated:", isAuthenticated);
-    console.log("userId:", userId);
-
-    if (!isAuthenticated || !userId) {
+    if (
+      !isAuthenticated ||
+      !userId
+    ) {
       return NextResponse.json(
         {
           error:
@@ -34,45 +26,20 @@ export async function GET() {
       );
     }
 
-    // -----------------------------------------
-    // MONGODB ENVIRONMENT
-    // -----------------------------------------
-
-    if (!process.env.MONGODB_URI) {
-      throw new Error(
-        "MONGODB_URI is missing from .env.local"
-      );
-    }
-
-    const databaseName =
-      process.env.MONGODB_DB || "quantum";
-
-    console.log(
-      "Database:",
-      databaseName
-    );
-
-    // -----------------------------------------
-    // CONNECT
-    // -----------------------------------------
-
     const client =
       await clientPromise;
 
-    console.log(
-      "MongoDB connection successful."
-    );
-
     const db =
-      client.db(databaseName);
-
-    // -----------------------------------------
-    // FIND USER CONVERSATIONS
-    // -----------------------------------------
+      client.db(
+        process.env.MONGODB_DB ||
+          "quantum"
+      );
 
     const conversations =
       await db
-        .collection("conversations")
+        .collection(
+          "conversations"
+        )
         .find({
           userId,
         })
@@ -80,15 +47,6 @@ export async function GET() {
           updatedAt: -1,
         })
         .toArray();
-
-    console.log(
-      "Conversation count:",
-      conversations.length
-    );
-
-    // -----------------------------------------
-    // RETURN JSON
-    // -----------------------------------------
 
     return NextResponse.json(
       conversations.map(
@@ -114,19 +72,15 @@ export async function GET() {
     );
   } catch (error) {
     console.error(
-      "========== QUANTUM CONVERSATIONS ERROR =========="
-    );
-
-    console.error(error);
-
-    console.error(
-      "================================================="
+      "GET CONVERSATIONS ERROR:",
+      error
     );
 
     return NextResponse.json(
       {
         error:
-          error instanceof Error
+          error instanceof
+            Error
             ? error.message
             : "Failed to load conversations.",
       },
