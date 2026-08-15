@@ -20,15 +20,37 @@ export interface ResearchItem {
 
 export interface WebResearchResult {
   query: string;
+
   searched: boolean;
+
   type:
     | "search"
     | "page"
     | "none";
+
   results: ResearchItem[];
+
   extractedContent?: string;
+
   pageUrl?: string;
+
   isYouTube?: boolean;
+}
+
+/*
+ * Keep research small enough for fast model
+ * processing.
+ */
+
+const MAX_RESULT_SNIPPET = 1200;
+const MAX_PAGE_CONTENT = 12000;
+
+function cleanText(
+  value: string
+) {
+  return value
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function detectTopic(
@@ -57,8 +79,6 @@ function detectTopic(
     "headline",
     "headlines",
     "what happened",
-    "this morning",
-    "tonight",
     "today",
     "yesterday",
     "this week",
@@ -105,24 +125,24 @@ function detectTimeRange(
 
   if (
     text.includes("this week") ||
-    text.includes("past week") ||
-    text.includes("last week")
+    text.includes("last week") ||
+    text.includes("past week")
   ) {
     return "week";
   }
 
   if (
     text.includes("this month") ||
-    text.includes("past month") ||
-    text.includes("last month")
+    text.includes("last month") ||
+    text.includes("past month")
   ) {
     return "month";
   }
 
   if (
     text.includes("this year") ||
-    text.includes("past year") ||
-    text.includes("last year")
+    text.includes("last year") ||
+    text.includes("past year")
   ) {
     return "year";
   }
@@ -130,154 +150,175 @@ function detectTimeRange(
   return undefined;
 }
 
-export async function researchWeb(
+/*
+ * ================================================
+ * DIRECT PAGE / URL
+ * ================================================
+ */
+
+async function extractPage(
+  url: string,
   query: string
 ): Promise<WebResearchResult> {
-  const cleanQuery =
-    query.trim();
+  const youtube =
+    isYouTubeUrl(url);
 
-  const directUrl =
-    extractUrl(cleanQuery);
+  const extraction =
+    await tvly.extract(
+      [url],
+      {
+        /*
+         * Advanced extraction is useful for harder
+         * pages, but it costs more and can be slower.
+         */
 
-  /*
-   * ==========================================
-   * DIRECT URL
-   * ==========================================
-   */
+        extractDepth:
+          youtube
+            ? "advanced"
+            : "basic",
 
-  if (directUrl) {
-    const youtube =
-      isYouTubeUrl(directUrl);
+        format: "markdown",
 
-    const pageQuestion =
-      cleanQuery.replace(
-        directUrl,
-        ""
-      ).trim();
+        query:
+          query || url,
 
-    const extraction =
-      await tvly.extract(
-        [directUrl],
+        chunksPerSource: 5,
+
+        includeFavicon: true,
+      }
+    );
+
+  const result =
+    extraction.results?.[0];
+
+  if (
+    result?.rawContent
+  ) {
+    return {
+      query,
+
+      searched: true,
+
+      type: "page",
+
+      pageUrl: url,
+
+      isYouTube: youtube,
+
+      extractedContent:
+        result.rawContent.slice(
+          0,
+          MAX_PAGE_CONTENT
+        ),
+
+      results: [
         {
-          extractDepth:
+          title:
             youtube
-              ? "advanced"
-              : "basic",
-
-          format: "markdown",
-
-          query:
-            pageQuestion ||
-            cleanQuery,
-
-          chunksPerSource: 5,
-
-          includeFavicon: true,
-        }
-      );
-
-    const successful =
-      extraction.results?.[0];
-
-    if (
-      successful?.rawContent
-    ) {
-      return {
-        query: cleanQuery,
-        searched: true,
-        type: "page",
-        pageUrl: directUrl,
-        isYouTube: youtube,
-        extractedContent:
-          successful.rawContent,
-        results: [
-          {
-            title: youtube
               ? "YouTube page"
               : "Web page",
-            url: directUrl,
-            content:
-              successful.rawContent.slice(
-                0,
-                5000
-              ),
-            favicon:
-              successful.favicon,
-            sourceType:
-              youtube
-                ? "youtube"
-                : "page",
-          },
-        ],
-      };
-    }
 
-    /*
-     * If extraction doesn't return useful
-     * content, fall back to search.
-     */
+          url,
 
-    const fallback =
-      await tvly.search(
-        cleanQuery,
-        {
-          searchDepth: "basic",
-          maxResults: 6,
-          includeFavicon: true,
-        }
-      );
+          content:
+            cleanText(
+              result.rawContent
+            ).slice(
+              0,
+              MAX_RESULT_SNIPPET
+            ),
 
-    return {
-      query: cleanQuery,
-      searched: true,
-      type: "search",
-      isYouTube: youtube,
-      results:
-        fallback.results?.map(
-          (result) => ({
-            title:
-              result.title,
-            url:
-              result.url,
-            content:
-              result.content,
-            score:
-              result.score,
-            publishedDate:
-              result.publishedDate,
-            favicon:
-              result.favicon,
-            sourceType:
-              youtube
-                ? "youtube"
-                : "web",
-          })
-        ) || [],
+          favicon:
+            result.favicon,
+
+          sourceType:
+            youtube
+              ? "youtube"
+              : "page",
+        },
+      ],
     };
   }
 
   /*
-   * ==========================================
-   * NORMAL WEB SEARCH
-   * ==========================================
+   * If extraction didn't return useful content,
+   * search the web as fallback.
    */
 
-  const topic =
-    detectTopic(
-      cleanQuery
+  const fallback =
+    await tvly.search(
+      query,
+      {
+        searchDepth: "basic",
+
+        maxResults: 6,
+
+        includeFavicon: true,
+      }
     );
 
+  return {
+    query,
+
+    searched: true,
+
+    type: "search",
+
+    isYouTube: youtube,
+
+    results:
+      fallback.results?.map(
+        (result) => ({
+          title:
+            result.title,
+
+          url:
+            result.url,
+
+          content:
+            cleanText(
+              result.content || ""
+            ).slice(
+              0,
+              MAX_RESULT_SNIPPET
+            ),
+
+          score:
+            result.score,
+
+          publishedDate:
+            result.publishedDate,
+
+          favicon:
+            result.favicon,
+
+          sourceType:
+            "youtube",
+        })
+      ) || [],
+  };
+}
+
+/*
+ * ================================================
+ * WEB SEARCH
+ * ================================================
+ */
+
+async function searchWeb(
+  query: string
+): Promise<WebResearchResult> {
+  const topic =
+    detectTopic(query);
+
   const timeRange =
-    detectTimeRange(
-      cleanQuery
-    );
+    detectTimeRange(query);
 
   const search =
     await tvly.search(
-      cleanQuery,
+      query,
       {
-        searchDepth:
-          "basic",
+        searchDepth: "basic",
 
         maxResults: 6,
 
@@ -294,16 +335,19 @@ export async function researchWeb(
         includeFavicon: true,
 
         /*
-         * Keep raw content OFF in the normal
-         * search path for speed.
+         * Don't request huge raw documents
+         * for a normal search.
          */
+
         includeRawContent: false,
       }
     );
 
   return {
-    query: cleanQuery,
+    query,
+
     searched: true,
+
     type: "search",
 
     results:
@@ -316,7 +360,12 @@ export async function researchWeb(
             result.url,
 
           content:
-            result.content,
+            cleanText(
+              result.content || ""
+            ).slice(
+              0,
+              MAX_RESULT_SNIPPET
+            ),
 
           score:
             result.score,
@@ -331,4 +380,40 @@ export async function researchWeb(
         })
       ) || [],
   };
+}
+
+/*
+ * ================================================
+ * MAIN
+ * ================================================
+ */
+
+export async function researchWeb(
+  query: string
+): Promise<WebResearchResult> {
+  const cleanQuery =
+    query.trim();
+
+  const directUrl =
+    extractUrl(cleanQuery);
+
+  if (directUrl) {
+    const textWithoutUrl =
+      cleanQuery
+        .replace(
+          directUrl,
+          ""
+        )
+        .trim();
+
+    return extractPage(
+      directUrl,
+      textWithoutUrl ||
+        cleanQuery
+    );
+  }
+
+  return searchWeb(
+    cleanQuery
+  );
 }

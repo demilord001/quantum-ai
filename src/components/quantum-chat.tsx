@@ -1741,11 +1741,9 @@ function MessageBubble({
     codeId: string
   ) => void;
 }) {
-  /* USER */
+  /* USER MESSAGE */
 
-  if (
-    item.role === "user"
-  ) {
+  if (item.role === "user") {
     return (
       <div className="flex justify-end">
         <div className="max-w-[82%] rounded-2xl rounded-br-md bg-white/[0.07] px-5 py-3.5 text-[15px] leading-7 text-slate-200">
@@ -1755,85 +1753,127 @@ function MessageBubble({
     );
   }
 
-  /* ASSISTANT */
+  /* QUANTUM */
 
   return (
     <article className="w-full">
 
-      {/* IDENTITY */}
+      {/* ==========================================
+          QUANTUM HEADER
+      ========================================== */}
 
       <div className="mb-4 flex items-center gap-2">
-        <div className="relative flex h-7 w-7 items-center justify-center rounded-lg border border-cyan-300/15 bg-cyan-300/[0.07]">
-          <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
+        <div className="relative flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-300/15 bg-cyan-300/[0.07] shadow-[0_0_25px_rgba(34,211,238,0.06)]">
+          <div className="absolute inset-0 rounded-xl bg-cyan-300/10 blur-md" />
+
+          <Sparkles className="relative h-4 w-4 text-cyan-300" />
         </div>
 
-        <span className="text-xs font-semibold tracking-[0.15em] text-cyan-300">
-          QUANTUM
-        </span>
+        <div>
+          <div className="text-xs font-semibold tracking-[0.15em] text-cyan-300">
+            QUANTUM
+          </div>
 
-        {item.research &&
-          item.research.length >
-            0 && (
-            <span className="rounded-full border border-cyan-300/10 px-2 py-0.5 text-[9px] text-cyan-300/60">
-              WEB RESEARCH
-            </span>
-          )}
+          <div className="text-[9px] text-slate-700">
+            AI RESEARCH ASSISTANT
+          </div>
+        </div>
       </div>
 
-      {/* RESEARCH */}
+      {/* ==========================================
+          LIVE RESEARCH
+      ========================================== */}
 
       {item.research &&
-        item.research.length >
-          0 && (
+        item.research.length > 0 && (
           <ResearchPanel
-            results={
-              item.research
-            }
+            results={item.research}
           />
         )}
 
-      {/* RESPONSE */}
+      {/* ==========================================
+          ANSWER CONTAINER
+      ========================================== */}
 
-      {item.content ? (
-        <FormattedAnswer
-          content={
-            item.content
-          }
-          copiedCode={
-            copiedCode
-          }
-          copyCode={
-            copyCode
-          }
-        />
-      ) : (
-        <SearchProgress />
-      )}
+      <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.025] shadow-[0_20px_70px_rgba(0,0,0,0.16)]">
 
-      {/* SOURCES */}
+        {/* ANSWER HEADER */}
+
+        <div className="flex items-center justify-between border-b border-white/[0.06] bg-white/[0.018] px-5 py-3">
+          <div className="flex items-center gap-2">
+            <div className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.8)]" />
+
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Answer
+            </span>
+          </div>
+
+          {item.content && (
+            <button
+              type="button"
+              onClick={() =>
+                void copyAnswer(
+                  item.content,
+                  index
+                )
+              }
+              className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-700 transition hover:bg-white/[0.05] hover:text-slate-300"
+            >
+              {copiedMessage ===
+              index ? (
+                <>
+                  <Check className="h-3 w-3" />
+                  Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3 w-3" />
+                  Copy
+                </>
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* ANSWER BODY */}
+
+        <div className="p-5 sm:p-6">
+          {item.content ? (
+            <FormattedAnswer
+              content={item.content}
+              copiedCode={copiedCode}
+              copyCode={copyCode}
+            />
+          ) : (
+            <SearchProgress />
+          )}
+        </div>
+      </div>
+
+      {/* ==========================================
+          SOURCES
+      ========================================== */}
 
       {item.sources &&
-        item.sources.length >
-          0 && (
+        item.sources.length > 0 && (
           <div className="mt-7">
-            <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-600">
-              Sources
+            <div className="mb-3 flex items-center gap-2">
+              <Globe2 className="h-3.5 w-3.5 text-cyan-300/70" />
+
+              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
+                Sources
+              </span>
             </div>
 
             <div className="grid gap-2 sm:grid-cols-2">
               {item.sources.map(
-                (
-                  source,
-                  index
-                ) => (
+                (source, index) => (
                   <a
                     key={`${source.url}-${index}`}
-                    href={
-                      source.url
-                    }
+                    href={source.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="group flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 transition hover:border-cyan-300/15 hover:bg-white/[0.035]"
+                    className="group flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.018] p-3 transition hover:border-cyan-300/15 hover:bg-white/[0.035]"
                   >
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-300/[0.04]">
                       <Globe2 className="h-3.5 w-3.5 text-cyan-300/70" />
@@ -1841,15 +1881,11 @@ function MessageBubble({
 
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-medium text-slate-400 group-hover:text-white">
-                        {
-                          source.title
-                        }
+                        {source.title}
                       </p>
 
                       <p className="truncate text-[10px] text-slate-700">
-                        {
-                          source.url
-                        }
+                        {source.url}
                       </p>
                     </div>
 
@@ -1860,36 +1896,6 @@ function MessageBubble({
             </div>
           </div>
         )}
-
-      {/* COPY */}
-
-      {item.content && (
-        <div className="mt-2 flex justify-end">
-          <button
-            type="button"
-            onClick={() =>
-              void copyAnswer(
-                item.content,
-                index
-              )
-            }
-            className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 transition hover:bg-white/[0.04] hover:text-slate-400"
-          >
-            {copiedMessage ===
-            index ? (
-              <>
-                <Check className="h-3.5 w-3.5" />
-                Copied
-              </>
-            ) : (
-              <>
-                <Copy className="h-3.5 w-3.5" />
-                Copy
-              </>
-            )}
-          </button>
-        </div>
-      )}
     </article>
   );
 }
@@ -2001,12 +2007,172 @@ function FormattedAnswer({
   ) => void;
 }) {
   return (
-    <div className="quantum-markdown overflow-x-auto text-[15px] leading-7 text-slate-300">
+    <div className="quantum-answer overflow-x-auto text-[15px] leading-7 text-slate-300">
+
       <ReactMarkdown
         remarkPlugins={[
           remarkGfm,
         ]}
         components={{
+          /* ========================================
+             HEADINGS
+          ======================================== */
+
+          h1({ children }) {
+            return (
+              <h1 className="mb-5 mt-0 text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl">
+                {children}
+              </h1>
+            );
+          },
+
+          h2({ children }) {
+            return (
+              <h2 className="mb-3 mt-8 text-xl font-bold leading-tight text-white sm:text-2xl">
+                {children}
+              </h2>
+            );
+          },
+
+          h3({ children }) {
+            return (
+              <h3 className="mb-2 mt-6 text-base font-semibold text-slate-100 sm:text-lg">
+                {children}
+              </h3>
+            );
+          },
+
+          /* ========================================
+             PARAGRAPHS
+          ======================================== */
+
+          p({ children }) {
+            return (
+              <p className="mb-5 max-w-[72ch] text-[15px] leading-7 text-slate-300">
+                {children}
+              </p>
+            );
+          },
+
+          /* ========================================
+             STRONG
+          ======================================== */
+
+          strong({ children }) {
+            return (
+              <strong className="font-semibold text-white">
+                {children}
+              </strong>
+            );
+          },
+
+          /* ========================================
+             LISTS
+          ======================================== */
+
+          ul({ children }) {
+            return (
+              <ul className="mb-5 space-y-2 pl-6 text-slate-300 marker:text-cyan-300">
+                {children}
+              </ul>
+            );
+          },
+
+          ol({ children }) {
+            return (
+              <ol className="mb-5 space-y-2 pl-6 text-slate-300 marker:text-cyan-300">
+                {children}
+              </ol>
+            );
+          },
+
+          li({ children }) {
+            return (
+              <li className="pl-1 leading-7">
+                {children}
+              </li>
+            );
+          },
+
+          /* ========================================
+             BLOCKQUOTE
+          ======================================== */
+
+          blockquote({ children }) {
+            return (
+              <blockquote className="my-6 rounded-r-xl border-l-2 border-cyan-300/30 bg-cyan-300/[0.025] px-5 py-4 text-slate-400">
+                {children}
+              </blockquote>
+            );
+          },
+
+          /* ========================================
+             LINKS
+          ======================================== */
+
+          a({ children, href }) {
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-cyan-300 underline-offset-4 hover:text-cyan-200 hover:underline"
+              >
+                {children}
+              </a>
+            );
+          },
+
+          /* ========================================
+             TABLE
+          ======================================== */
+
+          table({ children }) {
+            return (
+              <div className="quantum-scroll my-7 overflow-x-auto rounded-xl border border-white/[0.08]">
+                <table className="min-w-[650px] w-full border-collapse">
+                  {children}
+                </table>
+              </div>
+            );
+          },
+
+          thead({ children }) {
+            return (
+              <thead className="bg-white/[0.045]">
+                {children}
+              </thead>
+            );
+          },
+
+          th({ children }) {
+            return (
+              <th className="border border-white/[0.07] px-4 py-3 text-left text-xs font-semibold text-white">
+                {children}
+              </th>
+            );
+          },
+
+          td({ children }) {
+            return (
+              <td className="border border-white/[0.06] px-4 py-3 text-sm text-slate-400">
+                {children}
+              </td>
+            );
+          },
+
+          tr({ children }) {
+            return (
+              <tr className="transition hover:bg-white/[0.018]">
+                {children}
+              </tr>
+            );
+          },
+
+          /* ========================================
+             CODE BLOCK
+          ======================================== */
+
           pre({ children }) {
             const child =
               children as React.ReactElement<{
@@ -2029,7 +2195,8 @@ function FormattedAnswer({
 
             const code =
               String(
-                child?.props?.children ||
+                child?.props
+                  ?.children ||
                   ""
               ).replace(
                 /\n$/,
@@ -2043,7 +2210,7 @@ function FormattedAnswer({
               )}`;
 
             return (
-              <div className="my-6 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#030712] shadow-xl shadow-black/10">
+              <div className="my-7 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#030712] shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
 
                 <div className="flex items-center justify-between border-b border-white/[0.07] bg-white/[0.025] px-4 py-2.5">
                   <div className="flex items-center gap-2">
@@ -2051,7 +2218,7 @@ function FormattedAnswer({
                     <span className="h-2.5 w-2.5 rounded-full bg-yellow-400/60" />
                     <span className="h-2.5 w-2.5 rounded-full bg-green-400/60" />
 
-                    <span className="ml-2 text-[10px] uppercase tracking-[0.15em] text-slate-600">
+                    <span className="ml-2 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-600">
                       {language}
                     </span>
                   </div>
@@ -2082,8 +2249,8 @@ function FormattedAnswer({
                 </div>
 
                 <div className="quantum-scroll overflow-x-auto p-5">
-                  <pre className="m-0 bg-transparent p-0 font-mono text-[13px] leading-6 text-slate-300">
-                    <code>
+                  <pre className="m-0 bg-transparent p-0">
+                    <code className="font-mono text-[13px] leading-6 text-slate-300">
                       {code}
                     </code>
                   </pre>
@@ -2092,30 +2259,25 @@ function FormattedAnswer({
             );
           },
 
-          table({
-            children,
-          }) {
+          /* ========================================
+             INLINE CODE
+          ======================================== */
+
+          code({ children }) {
             return (
-              <div className="quantum-scroll my-6 overflow-x-auto rounded-xl border border-white/[0.07]">
-                <table className="m-0 min-w-[620px]">
-                  {children}
-                </table>
-              </div>
+              <code className="rounded-md border border-cyan-300/10 bg-cyan-300/[0.05] px-1.5 py-0.5 font-mono text-[0.9em] text-cyan-300">
+                {children}
+              </code>
             );
           },
 
-          a({
-            children,
-            href,
-          }) {
+          /* ========================================
+             HORIZONTAL RULE
+          ======================================== */
+
+          hr() {
             return (
-              <a
-                href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {children}
-              </a>
+              <hr className="my-8 border-white/[0.08]" />
             );
           },
         }}

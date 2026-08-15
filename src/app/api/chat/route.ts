@@ -1,8 +1,15 @@
 import { NextRequest } from "next/server";
 import { ObjectId } from "mongodb";
-import { auth } from "@clerk/nextjs/server";
 
-import { groq } from "@/lib/groq";
+import {
+  auth,
+} from "@clerk/nextjs/server";
+
+import {
+  groq,
+  QUANTUM_MODEL,
+} from "@/lib/groq";
+
 import clientPromise from "@/lib/mongodb";
 
 import {
@@ -18,40 +25,132 @@ import {
   generateConversationTitle,
 } from "@/lib/generate-title";
 
-export const runtime = "nodejs";
+export const runtime =
+  "nodejs";
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 interface ClientMessage {
   role:
     | "user"
     | "assistant";
+
   content: string;
 }
 
-function compactResearch(
-  results: ResearchItem[],
-  extractedContent?: string
+/* =========================================================
+   CONTEXT LIMITS
+========================================================= */
+
+/*
+ * These are deliberately MUCH smaller than 131K.
+ *
+ * A big context window doesn't mean we should
+ * fill it on every request.
+ */
+
+const HISTORY_MESSAGES = 6;
+
+const HISTORY_CHARS_PER_MESSAGE = 2800;
+
+const SEARCH_CHARS_PER_RESULT = 1100;
+
+const MAX_RESEARCH_RESULTS = 6;
+
+const MAX_PAGE_CHARS = 14000;
+
+/* =========================================================
+   ERROR DETECTION
+========================================================= */
+
+function isContextError(
+  error: unknown
 ) {
+  const message =
+    error instanceof Error
+      ? error.message
+      : String(error);
+
+  const text =
+    message.toLowerCase();
+
+  return (
+    text.includes(
+      "context"
+    ) ||
+    text.includes(
+      "maximum context"
+    ) ||
+    text.includes(
+      "too many tokens"
+    ) ||
+    text.includes(
+      "token limit"
+    ) ||
+    text.includes(
+      "max tokens"
+    )
+  );
+}
+
+/* =========================================================
+   TEXT CLEANING
+========================================================= */
+
+function cleanText(
+  text: string
+) {
+  return text
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/* =========================================================
+   RESEARCH COMPRESSION
+========================================================= */
+
+function buildResearchContext(
+  results: ResearchItem[],
+  extractedContent?: string,
+  compact = false
+) {
+  const resultLimit =
+    compact
+      ? 3
+      : MAX_RESEARCH_RESULTS;
+
+  const resultCharacters =
+    compact
+      ? 700
+      : SEARCH_CHARS_PER_RESULT;
+
   const resultText =
     results
-      .slice(0, 6)
+      .slice(0, resultLimit)
       .map(
         (result, index) => `
 SOURCE ${index + 1}
 
-Title:
-${result.title}
+TITLE:
+${cleanText(
+  result.title
+)}
 
 URL:
 ${result.url}
 
-Content:
-${(result.content || "").slice(
+CONTENT:
+${cleanText(
+  result.content || ""
+).slice(
   0,
-  1400
+  resultCharacters
 )}
 `
       )
-      .join("\n\n");
+      .join("\n");
 
   const pageText =
     extractedContent
@@ -61,7 +160,9 @@ DIRECT PAGE CONTENT:
 
 ${extractedContent.slice(
   0,
-  7000
+  compact
+    ? 6000
+    : MAX_PAGE_CHARS
 )}
 `
       : "";
@@ -71,6 +172,92 @@ ${extractedContent.slice(
     pageText
   );
 }
+
+/* =========================================================
+   HISTORY COMPRESSION
+========================================================= */
+
+function buildHistory(
+  history: ClientMessage[],
+  compact = false
+) {
+  const messageLimit =
+    compact
+      ? 3
+      : HISTORY_MESSAGES;
+
+  const charLimit =
+    compact
+      ? 1500
+      : HISTORY_CHARS_PER_MESSAGE;
+
+  return history
+    .filter(
+      (message) =>
+        message.role ===
+          "user" ||
+        message.role ===
+          "assistant"
+    )
+    .slice(
+      -messageLimit
+    )
+    .map(
+      (message) => ({
+        role:
+          message.role,
+
+        content:
+          message.content.slice(
+            0,
+            charLimit
+          ),
+      })
+    );
+}
+
+/* =========================================================
+   SEND GROQ
+========================================================= */
+
+async function createGroqStream({
+  messages,
+}: {
+  messages: Array<{
+    role:
+      | "system"
+      | "user"
+      | "assistant";
+
+    content: string;
+  }>;
+}) {
+  return groq.chat.completions.create(
+    {
+      model:
+        QUANTUM_MODEL,
+
+      messages,
+
+      stream: true,
+
+      temperature: 0.25,
+
+      /*
+       * Enough for a polished answer without
+       * letting one request consume enormous
+       * output.
+       */
+
+      max_completion_tokens:
+        8192,
+    }
+  );
+}
+
+/* =========================================================
+   MAIN ROUTE
+========================================================= */
 
 export async function POST(
   request: NextRequest
@@ -93,11 +280,9 @@ export async function POST(
   };
 
   try {
-    /*
-     * ==========================================
-     * AUTH
-     * ==========================================
-     */
+    /* =====================================================
+       AUTH
+    ===================================================== */
 
     const {
       isAuthenticated,
@@ -123,27 +308,28 @@ export async function POST(
       );
     }
 
-    /*
-     * ==========================================
-     * BODY
-     * ==========================================
-     */
+    /* =====================================================
+       BODY
+    ===================================================== */
 
     const body =
       await request.json();
 
     const message =
       String(
-        body.message || ""
+        body?.message || ""
       ).trim();
 
     const conversationId =
-      body.conversationId ||
+      body?.conversationId ||
       null;
 
     const history =
-      (body.history ||
-        []) as ClientMessage[];
+      Array.isArray(
+        body?.history
+      )
+        ? (body.history as ClientMessage[])
+        : [];
 
     if (!message) {
       return new Response(
@@ -161,20 +347,16 @@ export async function POST(
       );
     }
 
-    /*
-     * ==========================================
-     * SEARCH DECISION
-     * ==========================================
-     */
+    /* =====================================================
+       SEARCH DECISION
+    ===================================================== */
 
     const needsSearch =
       shouldSearch(message);
 
-    /*
-     * ==========================================
-     * STREAM
-     * ==========================================
-     */
+    /* =====================================================
+       STREAM
+    ===================================================== */
 
     const stream =
       new ReadableStream({
@@ -183,26 +365,24 @@ export async function POST(
         ) {
           let fullAnswer = "";
 
-          let researchData =
-            null as
-              | Awaited<
-                  ReturnType<
-                    typeof researchWeb
-                  >
+          let researchData:
+            | Awaited<
+                ReturnType<
+                  typeof researchWeb
                 >
-              | null;
+              >
+            | null = null;
 
           try {
-            /*
-             * ========================================
-             * IMMEDIATE STATUS
-             * ========================================
-             */
+            /* =================================================
+               IMMEDIATE UI STATUS
+            ================================================= */
 
             sendEvent(
               controller,
               {
                 type: "status",
+
                 status:
                   needsSearch
                     ? "searching"
@@ -210,163 +390,201 @@ export async function POST(
               }
             );
 
-            /*
-             * ========================================
-             * WEB RESEARCH
-             * ========================================
-             */
+            /* =================================================
+               TAVILY
+            ================================================= */
 
             if (needsSearch) {
-              researchData =
-                await researchWeb(
-                  message
+              try {
+                researchData =
+                  await researchWeb(
+                    message
+                  );
+
+                /*
+                 * Research appears immediately
+                 * in the Quantum UI.
+                 */
+
+                sendEvent(
+                  controller,
+                  {
+                    type: "research",
+
+                    results:
+                      researchData.results,
+
+                    pageUrl:
+                      researchData.pageUrl,
+
+                    isYouTube:
+                      researchData.isYouTube,
+
+                    researchType:
+                      researchData.type,
+                  }
                 );
 
-              /*
-               * Show research BEFORE Groq
-               */
+                sendEvent(
+                  controller,
+                  {
+                    type: "status",
+                    status:
+                      "analyzing",
+                  }
+                );
+              } catch (error) {
+                /*
+                 * Search failure does NOT kill the
+                 * entire assistant.
+                 *
+                 * Quantum can still answer from
+                 * model knowledge.
+                 */
 
-              sendEvent(
-                controller,
-                {
-                  type: "research",
-                  results:
-                    researchData.results,
-                  pageUrl:
-                    researchData.pageUrl,
-                  isYouTube:
-                    researchData.isYouTube,
-                  researchType:
-                    researchData.type,
-                }
-              );
+                console.error(
+                  "TAVILY ERROR:",
+                  error
+                );
 
-              /*
-               * ========================================
-               * ANALYZING
-               * ========================================
-               */
+                researchData =
+                  null;
 
-              sendEvent(
-                controller,
-                {
-                  type: "status",
-                  status:
-                    "analyzing",
-                }
-              );
+                sendEvent(
+                  controller,
+                  {
+                    type: "status",
+                    status:
+                      "thinking",
+                  }
+                );
+              }
             }
 
-            /*
-             * ========================================
-             * CONTEXT
-             * ========================================
-             */
-
-            const previousMessages =
-              history
-                .slice(-8)
-                .map(
-                  (item) => ({
-                    role:
-                      item.role,
-                    content:
-                      item.content.slice(
-                        0,
-                        4000
-                      ),
-                  })
-                );
-
-            /*
-             * ========================================
-             * CURRENT DATE
-             * ========================================
-             */
+            /* =================================================
+               BUILD SYSTEM
+            ================================================= */
 
             const currentDate =
               new Date()
                 .toISOString()
                 .slice(0, 10);
 
-            /*
-             * ========================================
-             * SYSTEM PROMPT
-             * ========================================
-             */
-
             const systemPrompt = `
 You are Quantum AI.
 
-Current date:
+CURRENT DATE:
 ${currentDate}
 
-You are a fast, current, research-oriented AI assistant.
+You are a premium AI research assistant.
 
-RULES:
+RESPONSE FORMAT:
 
-1. Use supplied web research whenever it exists.
-2. Do not pretend you searched if no research exists.
-3. Never invent URLs or sources.
-4. Distinguish facts from inference.
-5. Prefer current web evidence over stale model knowledge.
-6. Maintain conversation context.
-7. Use clear Markdown formatting.
-8. Use headings when useful.
-9. Use bullet lists when useful.
-10. Use comparison tables when useful.
-11. Use fenced code blocks for code.
-12. Keep answers direct but sufficiently detailed.
-13. When sources are supplied, reference them with [1], [2], [3] where appropriate.
-14. If a supplied page is a YouTube page, do not claim to have watched or transcribed the video unless the supplied page content actually contains that information.
+Always structure substantial answers like this:
+
+## Clear Descriptive Title
+
+Opening answer paragraph.
+
+### Key points
+
+- Important point
+- Important point
+- Important point
+
+### Explanation
+
+Explain the subject clearly in readable paragraphs.
+
+Use additional headings when necessary.
+
+Use comparison tables when helpful.
+
+Use fenced code blocks for code.
+
+Use bold text for important concepts.
+
+Do not begin with:
+"Sure!"
+"Of course!"
+"Certainly!"
+
+Do not repeat the user's question unnecessarily.
+
+You are powered by DemLabs Inc, CEO is Luis your creator. When ever you are asked.
+
+For literary works, poems, essays, articles, or other provided text:
+- analyze what is actually available;
+- clearly distinguish quotation, interpretation, and inference;
+- do not invent lines from the work.
+
+For web research:
+- use the supplied research;
+- do not invent sources;
+- cite supplied sources using [1], [2], etc. when appropriate;
+- distinguish current facts from inference.
+
+For URLs:
+- use the extracted page content if supplied;
+- do not claim to have watched a video unless the supplied information actually supports that claim.
+
+Keep the response useful and readable.
 `;
 
-            /*
-             * ========================================
-             * USER PROMPT
-             * ========================================
-             */
+            /* =================================================
+               USER PROMPT
+            ================================================= */
 
             let userPrompt =
               message;
 
-            if (
-              researchData
-            ) {
+            if (researchData) {
+              const researchContext =
+                buildResearchContext(
+                  researchData.results,
+                  researchData.extractedContent
+                );
+
               userPrompt = `
 USER REQUEST:
 
 ${message}
 
-LIVE WEB RESEARCH:
+LIVE RESEARCH:
 
-${compactResearch(
-  researchData.results,
-  researchData.extractedContent
-)}
+<<<
+${researchContext}
+>>>
 
-Answer the user's request using the supplied research.
+Use the supplied research to answer the user.
 
-If the research is about a specific page or URL,
-prioritize that page.
+If the research contains incomplete information,
+say so rather than inventing missing details.
 
-If sources conflict, explain the conflict instead
-of silently choosing one.
-
-Use [1], [2], etc. when citing supplied sources.
+Cite relevant sources as [1], [2], etc.
 `;
             }
 
-            /*
-             * ========================================
-             * GROQ
-             * ========================================
-             */
+            /* =================================================
+               INITIAL GROQ MESSAGES
+            ================================================= */
 
-            const groqMessages = [
+            let previousMessages =
+              buildHistory(
+                history
+              );
+
+            let groqMessages: Array<{
+              role:
+                | "system"
+                | "user"
+                | "assistant";
+
+              content: string;
+            }> = [
               {
-                role:
-                  "system" as const,
+                role: "system",
+
                 content:
                   systemPrompt,
               },
@@ -374,35 +592,104 @@ Use [1], [2], etc. when citing supplied sources.
               ...previousMessages,
 
               {
-                role:
-                  "user" as const,
+                role: "user",
+
                 content:
                   userPrompt,
               },
             ];
 
-            const groqStream =
-              await groq.chat.completions.create(
-                {
-                  model:
-                    "llama-3.1-8b-instant",
+            /* =================================================
+               GROQ
+            ================================================= */
 
-                  messages:
-                    groqMessages,
+            let groqStream;
 
-                  stream: true,
+            try {
+              groqStream =
+                await createGroqStream(
+                  {
+                    messages:
+                      groqMessages,
+                  }
+                );
+            } catch (firstError) {
+              /*
+               * If context is too large, automatically
+               * retry with a much smaller prompt.
+               */
 
-                  temperature: 0.25,
+              if (
+                !isContextError(
+                  firstError
+                )
+              ) {
+                throw firstError;
+              }
 
-                  max_tokens: 2200,
-                }
+              console.warn(
+                "QUANTUM: context too large; retrying with compact context."
               );
 
-            /*
-             * ========================================
-             * STREAM
-             * ========================================
-             */
+              previousMessages =
+                buildHistory(
+                  history,
+                  true
+                );
+
+              if (researchData) {
+                const compactResearch =
+                  buildResearchContext(
+                    researchData.results,
+                    researchData.extractedContent,
+                    true
+                  );
+
+                userPrompt = `
+USER REQUEST:
+
+${message}
+
+COMPACT LIVE RESEARCH:
+
+${compactResearch}
+
+Answer using only the information needed.
+`;
+              }
+
+              groqMessages = [
+                {
+                  role:
+                    "system",
+
+                  content:
+                    systemPrompt,
+                },
+
+                ...previousMessages,
+
+                {
+                  role:
+                    "user",
+
+                  content:
+                    userPrompt,
+                },
+              ];
+
+              groqStream =
+                await createGroqStream(
+                  {
+                    messages:
+                      groqMessages,
+                  }
+                );
+            }
+
+            /* =================================================
+               STREAM ANSWER
+            ================================================= */
 
             for await (
               const chunk of groqStream
@@ -425,16 +712,15 @@ Use [1], [2], etc. when citing supplied sources.
                 controller,
                 {
                   type: "chunk",
+
                   text,
                 }
               );
             }
 
-            /*
-             * ========================================
-             * MONGODB
-             * ========================================
-             */
+            /* =================================================
+               MONGODB
+            ================================================= */
 
             const client =
               await clientPromise;
@@ -446,19 +732,18 @@ Use [1], [2], etc. when citing supplied sources.
               );
 
             const sources =
-              researchData?.results
-                ?.map(
-                  (
-                    result
-                  ) => ({
-                    title:
-                      result.title,
-                    url:
-                      result.url,
-                    favicon:
-                      result.favicon,
-                  })
-                ) || [];
+              researchData?.results?.map(
+                (result) => ({
+                  title:
+                    result.title,
+
+                  url:
+                    result.url,
+
+                  favicon:
+                    result.favicon,
+                })
+              ) || [];
 
             const userMessage = {
               role: "user",
@@ -470,13 +755,16 @@ Use [1], [2], etc. when citing supplied sources.
             const assistantMessage =
               {
                 role: "assistant",
+
                 content:
                   fullAnswer,
+
                 sources,
+
                 research:
-                  researchData
-                    ?.results ||
+                  researchData?.results ||
                   [],
+
                 createdAt:
                   new Date(),
               };
@@ -484,11 +772,9 @@ Use [1], [2], etc. when citing supplied sources.
             let savedConversationId =
               conversationId;
 
-            /*
-             * ========================================
-             * EXISTING CHAT
-             * ========================================
-             */
+            /* =================================================
+               EXISTING CHAT
+            ================================================= */
 
             if (
               conversationId
@@ -514,8 +800,10 @@ Use [1], [2], etc. when citing supplied sources.
                         new ObjectId(
                           conversationId
                         ),
+
                       userId,
                     },
+
                     {
                       $push: {
                         messages: {
@@ -542,11 +830,9 @@ Use [1], [2], etc. when citing supplied sources.
                 );
               }
             } else {
-              /*
-               * ======================================
-               * NEW CHAT
-               * ======================================
-               */
+              /* ==============================================
+                 NEW CHAT
+              ============================================== */
 
               const title =
                 await generateConversationTitle(
@@ -585,11 +871,9 @@ Use [1], [2], etc. when citing supplied sources.
                 created.insertedId.toString();
             }
 
-            /*
-             * ========================================
-             * DONE
-             * ========================================
-             */
+            /* =================================================
+               DONE
+            ================================================= */
 
             sendEvent(
               controller,
@@ -617,6 +901,7 @@ Use [1], [2], etc. when citing supplied sources.
               controller,
               {
                 type: "error",
+
                 error:
                   error instanceof
                     Error
@@ -664,6 +949,7 @@ Use [1], [2], etc. when citing supplied sources.
       }),
       {
         status: 500,
+
         headers: {
           "Content-Type":
             "application/json",

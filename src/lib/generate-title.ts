@@ -1,4 +1,7 @@
-import { groq } from "@/lib/groq";
+import {
+  groq,
+  QUANTUM_MODEL,
+} from "@/lib/groq";
 
 export async function generateConversationTitle({
   userMessage,
@@ -12,23 +15,22 @@ export async function generateConversationTitle({
       await groq.chat.completions.create(
         {
           model:
-            "llama-3.1-8b-instant",
+            QUANTUM_MODEL,
 
           messages: [
             {
               role: "system",
 
               content: `
-Generate a concise title for an AI conversation.
+Generate a short title for this conversation.
 
 Rules:
-- Describe the overall subject, not the literal first sentence.
-- Do not copy the user's wording verbatim.
-- Do not ask a question.
+- Describe the subject.
+- Do not copy the first sentence.
+- Do not make it a question.
 - Do not say "Chat about".
-- Do not use quotation marks.
 - 2 to 6 words.
-- Specific and natural.
+- Clear and natural.
 - Title Case.
 - Return ONLY the title.
 `,
@@ -39,12 +41,15 @@ Rules:
 
               content: `
 USER:
-${userMessage}
+${userMessage.slice(
+  0,
+  2500
+)}
 
 ASSISTANT:
 ${assistantAnswer.slice(
   0,
-  2500
+  3000
 )}
 `,
             },
@@ -52,7 +57,7 @@ ${assistantAnswer.slice(
 
           temperature: 0.15,
 
-          max_tokens: 20,
+          max_completion_tokens: 20,
         }
       );
 
@@ -62,17 +67,23 @@ ${assistantAnswer.slice(
         ?.content
         ?.trim();
 
-    return (
-      title
-        ?.replace(
-          /^["']|["']$/g,
-          ""
-        )
-        .replace(/\.$/, "")
-        .slice(0, 70) ||
-      "New conversation"
+    if (!title) {
+      return "New Chat";
+    }
+
+    return title
+      .replace(
+        /^["']|["']$/g,
+        ""
+      )
+      .replace(/\.$/, "")
+      .slice(0, 80);
+  } catch (error) {
+    console.error(
+      "TITLE GENERATION ERROR:",
+      error
     );
-  } catch {
+
     return "New conversation";
   }
 }
