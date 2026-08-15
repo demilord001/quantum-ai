@@ -531,332 +531,317 @@ export default function QuantumChat({
   ======================================================= */
 
   async function sendMessage() {
-    const text =
-      message.trim();
+  const text = message.trim();
 
-    if (
-      !text ||
-      loading
-    ) {
-      return;
-    }
+  if (!text || loading) {
+    return;
+  }
 
-    const streamId =
-      `stream-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2)}`;
+  const streamId =
+    `stream-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2)}`;
 
-    const history =
-      [...messages];
+  const history =
+    messages
+      .filter(
+        (item) =>
+          item.role === "user" ||
+          item.role === "assistant"
+      )
+      .slice(-4);
 
-    setMessages(
-      (previous) => [
-        ...previous,
+  setMessages((previous) => [
+    ...previous,
 
-        {
-          role: "user",
-          content: text,
+    {
+      role: "user",
+      content: text,
+    },
+
+    {
+      role: "assistant",
+      content: "",
+      sources: [],
+      research: [],
+      streamId,
+    },
+  ]);
+
+  setMessage("");
+  setLoading(true);
+  setSearchStatus("thinking");
+  setAutoScroll(true);
+
+  try {
+    const response = await fetch(
+      "/api/chat",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
         },
 
-        {
-          role:
-            "assistant",
-
-          content: "",
-
-          sources: [],
-
-          research: [],
-
-          streamId,
-        },
-      ]
+        body: JSON.stringify({
+          message: text,
+          conversationId,
+          history,
+        }),
+      }
     );
 
-    setMessage("");
-    setLoading(true);
-    setAutoScroll(true);
-    setSearchStatus("thinking");
+    if (!response.ok) {
+      const data =
+        await response
+          .json()
+          .catch(() => null);
 
-    try {
-      const response =
-        await fetch(
-          "/api/chat",
-          {
-            method: "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body: JSON.stringify({
-              message: text,
-
-              conversationId,
-
-              history,
-            }),
-          }
-        );
-
-      if (!response.ok) {
-        const data =
-          await response
-            .json()
-            .catch(() => null);
-
-        throw new Error(
-          data?.error ||
-            `Quantum request failed (${response.status}).`
-        );
-      }
-
-      if (!response.body) {
-        throw new Error(
-          "Quantum returned no stream."
-        );
-      }
-
-      const reader =
-        response.body.getReader();
-
-      const decoder =
-        new TextDecoder();
-
-      let buffer = "";
-
-      while (true) {
-        const {
-          value,
-          done,
-        } =
-          await reader.read();
-
-        if (done) {
-          break;
-        }
-
-        buffer +=
-          decoder.decode(
-            value,
-            {
-              stream: true,
-            }
-          );
-
-        const events =
-          buffer.split(
-            "\n\n"
-          );
-
-        buffer =
-          events.pop() || "";
-
-        for (
-          const event of events
-        ) {
-          const line =
-            event
-              .split("\n")
-              .find(
-                (value) =>
-                  value.startsWith(
-                    "data:"
-                  )
-              );
-
-          if (!line) {
-            continue;
-          }
-
-          const payload =
-            line
-              .replace(
-                /^data:\s*/,
-                ""
-              )
-              .trim();
-
-          if (!payload) {
-            continue;
-          }
-
-          let data: any;
-
-          try {
-            data =
-              JSON.parse(
-                payload
-              );
-          } catch {
-            continue;
-          }
-
-          if (
-            data.type ===
-            "status"
-          ) {
-            setSearchStatus(
-              data.status ||
-                "thinking"
-            );
-
-            continue;
-          }
-
-          if (
-            data.type ===
-            "research"
-          ) {
-            setMessages(
-              (previous) =>
-                previous.map(
-                  (item) =>
-                    item.streamId ===
-                    streamId
-                      ? {
-                          ...item,
-
-                          research:
-                            data.results ||
-                            [],
-                        }
-                      : item
-                )
-            );
-
-            setSearchStatus(
-              "analyzing"
-            );
-
-            continue;
-          }
-
-          if (
-            data.type ===
-            "sources"
-          ) {
-            setMessages(
-              (previous) =>
-                previous.map(
-                  (item) =>
-                    item.streamId ===
-                    streamId
-                      ? {
-                          ...item,
-
-                          sources:
-                            data.sources ||
-                            [],
-                        }
-                      : item
-                )
-            );
-
-            continue;
-          }
-
-          if (
-            data.type ===
-            "chunk"
-          ) {
-            if (!data.text) {
-              continue;
-            }
-
-            setMessages(
-              (previous) =>
-                previous.map(
-                  (item) =>
-                    item.streamId ===
-                    streamId
-                      ? {
-                          ...item,
-
-                          content:
-                            item.content +
-                            data.text,
-                        }
-                      : item
-                )
-            );
-
-            setSearchStatus(
-              "analyzing"
-            );
-
-            continue;
-          }
-
-          if (
-            data.type ===
-            "done"
-          ) {
-            setConversationId(
-              data.conversationId ||
-                null
-            );
-
-            setSearchStatus(
-              "done"
-            );
-
-            await loadConversations();
-
-            continue;
-          }
-
-          if (
-            data.type ===
-            "error"
-          ) {
-            throw new Error(
-              data.error ||
-                "Quantum failed."
-            );
-          }
-        }
-      }
-    } catch (error) {
-      console.error(
-        "Quantum error:",
-        error
+      throw new Error(
+        data?.error ||
+          `Quantum request failed (${response.status}).`
       );
-
-      const text =
-        error instanceof
-        Error
-          ? error.message
-          : "Something went wrong.";
-
-      setMessages(
-        (previous) =>
-          previous.map(
-            (item) =>
-              item.streamId ===
-              streamId
-                ? {
-                    ...item,
-
-                    content:
-                      `**Quantum error**\n\n${text}`,
-                  }
-                : item
-          )
-      );
-
-      setSearchStatus(
-        "error"
-      );
-    } finally {
-      setLoading(false);
-
-      setTimeout(() => {
-        textareaRef.current?.focus();
-      }, 50);
     }
+
+    if (!response.body) {
+      throw new Error(
+        "Quantum returned no stream."
+      );
+    }
+
+    const reader =
+      response.body.getReader();
+
+    const decoder =
+      new TextDecoder();
+
+    let buffer = "";
+
+    while (true) {
+      const {
+        value,
+        done,
+      } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(
+        value,
+        {
+          stream: true,
+        }
+      );
+
+      const events =
+        buffer.split("\n\n");
+
+      buffer =
+        events.pop() || "";
+
+      for (
+        const event of events
+      ) {
+        const dataLine =
+          event
+            .split("\n")
+            .find(
+              (line) =>
+                line.startsWith(
+                  "data:"
+                )
+            );
+
+        if (!dataLine) {
+          continue;
+        }
+
+        const payload =
+          dataLine
+            .replace(
+              /^data:\s*/,
+              ""
+            )
+            .trim();
+
+        if (!payload) {
+          continue;
+        }
+
+        let data: any;
+
+        try {
+          data =
+            JSON.parse(
+              payload
+            );
+        } catch {
+          continue;
+        }
+
+        if (
+          data.type === "status"
+        ) {
+          setSearchStatus(
+            data.status ||
+              "thinking"
+          );
+
+          continue;
+        }
+
+        if (
+          data.type ===
+          "research"
+        ) {
+          setMessages(
+            (previous) =>
+              previous.map(
+                (item) =>
+                  item.streamId ===
+                  streamId
+                    ? {
+                        ...item,
+
+                        research:
+                          data.results ||
+                          [],
+                      }
+                    : item
+              )
+          );
+
+          setSearchStatus(
+            "analyzing"
+          );
+
+          continue;
+        }
+
+        if (
+          data.type === "chunk"
+        ) {
+          if (!data.text) {
+            continue;
+          }
+
+          setMessages(
+            (previous) =>
+              previous.map(
+                (item) =>
+                  item.streamId ===
+                  streamId
+                    ? {
+                        ...item,
+
+                        content:
+                          item.content +
+                          data.text,
+                      }
+                    : item
+              )
+          );
+
+          setSearchStatus(
+            "analyzing"
+          );
+
+          continue;
+        }
+
+        if (
+          data.type === "done"
+        ) {
+          setConversationId(
+            data.conversationId ||
+              null
+          );
+
+          setMessages(
+            (previous) =>
+              previous.map(
+                (item) =>
+                  item.streamId ===
+                  streamId
+                    ? {
+                        role:
+                          item.role,
+
+                        content:
+                          item.content,
+
+                        sources:
+                          data.sources ||
+                          item.sources ||
+                          [],
+
+                        research:
+                          item.research ||
+                          [],
+                      }
+                    : item
+              )
+          );
+
+          setSearchStatus(
+            "done"
+          );
+
+          await loadConversations();
+
+          continue;
+        }
+
+        if (
+          data.type === "error"
+        ) {
+          throw new Error(
+            data.error ||
+              "Quantum failed."
+          );
+        }
+      }
+    }
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : "Something went wrong.";
+
+    console.error(
+      "Quantum client error:",
+      error
+    );
+
+    setMessages(
+      (previous) =>
+        previous.map(
+          (item) =>
+            item.streamId ===
+            streamId
+              ? {
+                  ...item,
+
+                  content:
+                    `**Quantum error**\n\n${errorMessage}`,
+                }
+              : item
+        )
+    );
+
+    setSearchStatus(
+      "error"
+    );
+  } finally {
+    setLoading(false);
+
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 50);
   }
+}
 
   /* =======================================================
      KEYBOARD
