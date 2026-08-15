@@ -28,10 +28,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <ClerkProvider>
-    <Analytics />
       <html lang="en" className={cn(inter.variable, geistSans.variable, geistMono.variable)}>
         <body className="bg-background font-sans antialiased">
           {children}
+          <Analytics />
         </body>
       </html>
     </ClerkProvider>
