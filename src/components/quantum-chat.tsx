@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -19,6 +20,8 @@ import {
   Loader2,
   Menu,
   MoreHorizontal,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   Settings,
@@ -83,7 +86,10 @@ export default function QuantumChat({
   firstName,
 }: QuantumChatProps) {
   const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(
+    []
+  );
+
   const [conversations, setConversations] = useState<
     Conversation[]
   >([]);
@@ -96,18 +102,15 @@ export default function QuantumChat({
   const [searchStatus, setSearchStatus] =
     useState<SearchStatus>("idle");
 
-  const [sidebarOpen, setSidebarOpen] =
+  /* Desktop sidebar state */
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] =
     useState(false);
 
-  const [autoScroll, setAutoScroll] =
-    useState(true);
+  /* Mobile sidebar state */
+  const [mobileSidebarOpen, setMobileSidebarOpen] =
+    useState(false);
 
-  const [copiedMessage, setCopiedMessage] =
-    useState<number | null>(null);
-
-  const [copiedCode, setCopiedCode] =
-    useState<string | null>(null);
-
+  /* One menu at a time */
   const [openMenuId, setOpenMenuId] =
     useState<string | null>(null);
 
@@ -119,6 +122,15 @@ export default function QuantumChat({
 
   const [sidebarSearch, setSidebarSearch] =
     useState("");
+
+  const [autoScroll, setAutoScroll] =
+    useState(true);
+
+  const [copiedMessage, setCopiedMessage] =
+    useState<number | null>(null);
+
+  const [copiedCode, setCopiedCode] =
+    useState<string | null>(null);
 
   const textareaRef =
     useRef<HTMLTextAreaElement | null>(null);
@@ -133,8 +145,8 @@ export default function QuantumChat({
      LOAD CONVERSATIONS
   ======================================================= */
 
-  const loadConversations = useCallback(
-    async () => {
+  const loadConversations =
+    useCallback(async () => {
       try {
         const response = await fetch(
           "/api/conversations",
@@ -170,32 +182,33 @@ export default function QuantumChat({
           error
         );
       }
-    },
-    []
-  );
+    }, []);
 
   useEffect(() => {
     void loadConversations();
   }, [loadConversations]);
 
   /* =======================================================
-     CLOSE MENU WHEN CLICKING ELSEWHERE
+     CLOSE MENU WHEN ESC PRESSED
   ======================================================= */
 
   useEffect(() => {
-    function closeMenu() {
-      setOpenMenuId(null);
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpenMenuId(null);
+        setRenamingId(null);
+      }
     }
 
-    document.addEventListener(
-      "click",
-      closeMenu
+    window.addEventListener(
+      "keydown",
+      handleEscape
     );
 
     return () => {
-      document.removeEventListener(
-        "click",
-        closeMenu
+      window.removeEventListener(
+        "keydown",
+        handleEscape
       );
     };
   }, []);
@@ -213,14 +226,10 @@ export default function QuantumChat({
       behavior: loading ? "auto" : "smooth",
       block: "end",
     });
-  }, [
-    messages,
-    loading,
-    autoScroll,
-  ]);
+  }, [messages, loading, autoScroll]);
 
   /* =======================================================
-     HANDLE MESSAGE SCROLL
+     SCROLL DETECTION
   ======================================================= */
 
   function handleMessageScroll() {
@@ -253,7 +262,7 @@ export default function QuantumChat({
     setAutoScroll(true);
     setOpenMenuId(null);
     setRenamingId(null);
-    setSidebarOpen(false);
+    setMobileSidebarOpen(false);
 
     setTimeout(() => {
       textareaRef.current?.focus();
@@ -261,12 +270,14 @@ export default function QuantumChat({
   }
 
   /* =======================================================
-     OPEN CONVERSATION
+     OPEN CHAT
   ======================================================= */
 
   async function openConversation(
     id: string
   ) {
+    setOpenMenuId(null);
+
     try {
       const response =
         await fetch(
@@ -277,29 +288,21 @@ export default function QuantumChat({
           }
         );
 
-      if (!response.ok) {
-        const data =
-          await response
-            .json()
-            .catch(() => null);
+      const data =
+        await response
+          .json()
+          .catch(() => null);
 
+      if (!response.ok) {
         throw new Error(
           data?.error ||
             "Unable to open conversation."
         );
       }
 
-      const data =
-        await response.json();
-
-      setConversationId(
-        data._id
-      );
-
+      setConversationId(data._id);
       setMessages(
-        Array.isArray(
-          data.messages
-        )
+        Array.isArray(data.messages)
           ? data.messages
           : []
       );
@@ -307,8 +310,7 @@ export default function QuantumChat({
       setMessage("");
       setSearchStatus("idle");
       setAutoScroll(true);
-      setSidebarOpen(false);
-      setOpenMenuId(null);
+      setMobileSidebarOpen(false);
 
       setTimeout(() => {
         textareaRef.current?.focus();
@@ -322,7 +324,7 @@ export default function QuantumChat({
   }
 
   /* =======================================================
-     DELETE CONVERSATION
+     DELETE CHAT
   ======================================================= */
 
   async function deleteConversation(
@@ -357,9 +359,7 @@ export default function QuantumChat({
           )
       );
 
-      if (
-        conversationId === id
-      ) {
+      if (conversationId === id) {
         startNewChat();
       }
 
@@ -373,7 +373,7 @@ export default function QuantumChat({
   }
 
   /* =======================================================
-     RENAME CONVERSATION
+     START RENAME
   ======================================================= */
 
   function beginRename(
@@ -390,16 +390,27 @@ export default function QuantumChat({
     setOpenMenuId(null);
   }
 
+  /* =======================================================
+     CANCEL RENAME
+  ======================================================= */
+
   function cancelRename() {
     setRenamingId(null);
     setRenameValue("");
   }
 
+  /* =======================================================
+     SAVE RENAME
+  ======================================================= */
+
   async function saveRename(
     id: string
   ) {
     const title =
-      renameValue.trim();
+      renameValue
+        .trim()
+        .replace(/\s+/g, " ")
+        .slice(0, 80);
 
     if (!title) {
       return;
@@ -460,14 +471,17 @@ export default function QuantumChat({
   }
 
   /* =======================================================
-     STREAMING CHAT
+     SEND + STREAM
   ======================================================= */
 
   async function sendMessage() {
     const text =
       message.trim();
 
-    if (!text || loading) {
+    if (
+      !text ||
+      loading
+    ) {
       return;
     }
 
@@ -475,11 +489,6 @@ export default function QuantumChat({
       `stream-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2)}`;
-
-    /*
-     * Previous history only.
-     * Current message is sent separately.
-     */
 
     const history =
       [...messages];
@@ -544,7 +553,7 @@ export default function QuantumChat({
               data.error;
           }
         } catch {
-          // Ignore non-JSON errors.
+          // Ignore invalid error response.
         }
 
         throw new Error(
@@ -570,8 +579,7 @@ export default function QuantumChat({
         const {
           value,
           done,
-        } =
-          await reader.read();
+        } = await reader.read();
 
         if (done) {
           break;
@@ -648,9 +656,7 @@ export default function QuantumChat({
             continue;
           }
 
-          /* ==============================================
-             STATUS
-          ============================================== */
+          /* STATUS */
 
           if (
             data.type ===
@@ -664,18 +670,12 @@ export default function QuantumChat({
             continue;
           }
 
-          /* ==============================================
-             RESEARCH
-          ============================================== */
+          /* RESEARCH */
 
           if (
             data.type ===
             "research"
           ) {
-            const results =
-              data.results ||
-              [];
-
             setMessages(
               (previous) =>
                 previous.map(
@@ -690,7 +690,8 @@ export default function QuantumChat({
                     return {
                       ...item,
                       research:
-                        results,
+                        data.results ||
+                        [],
                     };
                   }
                 )
@@ -703,18 +704,12 @@ export default function QuantumChat({
             continue;
           }
 
-          /* ==============================================
-             SOURCES
-          ============================================== */
+          /* SOURCES */
 
           if (
             data.type ===
             "sources"
           ) {
-            const sources =
-              data.sources ||
-              [];
-
             setMessages(
               (previous) =>
                 previous.map(
@@ -728,7 +723,9 @@ export default function QuantumChat({
 
                     return {
                       ...item,
-                      sources,
+                      sources:
+                        data.sources ||
+                        [],
                     };
                   }
                 )
@@ -737,9 +734,7 @@ export default function QuantumChat({
             continue;
           }
 
-          /* ==============================================
-             TEXT
-          ============================================== */
+          /* TEXT */
 
           if (
             data.type ===
@@ -766,6 +761,7 @@ export default function QuantumChat({
 
                     return {
                       ...item,
+
                       content:
                         item.content +
                         data.text,
@@ -777,9 +773,7 @@ export default function QuantumChat({
             continue;
           }
 
-          /* ==============================================
-             DONE
-          ============================================== */
+          /* DONE */
 
           if (
             data.type ===
@@ -808,12 +802,15 @@ export default function QuantumChat({
                     return {
                       role:
                         item.role,
+
                       content:
                         item.content,
+
                       sources:
                         item.sources ||
                         data.sources ||
                         [],
+
                       research:
                         item.research ||
                         [],
@@ -827,9 +824,7 @@ export default function QuantumChat({
             continue;
           }
 
-          /* ==============================================
-             SERVER ERROR
-          ============================================== */
+          /* ERROR */
 
           if (
             data.type ===
@@ -895,7 +890,8 @@ export default function QuantumChat({
     event: React.KeyboardEvent<HTMLTextAreaElement>
   ) {
     if (
-      event.key === "Enter" &&
+      event.key ===
+        "Enter" &&
       !event.shiftKey
     ) {
       event.preventDefault();
@@ -957,7 +953,7 @@ export default function QuantumChat({
   }
 
   /* =======================================================
-     SEARCHED SIDEBAR
+     FILTERED SIDEBAR
   ======================================================= */
 
   const filteredConversations =
@@ -967,8 +963,8 @@ export default function QuantumChat({
           .toLowerCase()
           .includes(
             sidebarSearch
-              .toLowerCase()
               .trim()
+              .toLowerCase()
           )
     );
 
@@ -984,21 +980,21 @@ export default function QuantumChat({
       ================================================== */}
 
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute left-[30%] top-[-300px] h-[680px] w-[680px] rounded-full bg-cyan-400/[0.05] blur-[170px]" />
+        <div className="absolute left-[28%] top-[-280px] h-[650px] w-[650px] rounded-full bg-cyan-400/[0.045] blur-[170px]" />
 
-        <div className="absolute bottom-[-260px] right-[-120px] h-[620px] w-[620px] rounded-full bg-violet-500/[0.045] blur-[170px]" />
+        <div className="absolute bottom-[-250px] right-[-120px] h-[600px] w-[600px] rounded-full bg-violet-500/[0.04] blur-[170px]" />
 
         <div
-          className="absolute inset-0 opacity-20"
+          className="absolute inset-0 opacity-[0.16]"
           style={{
             backgroundImage: `
               linear-gradient(
-                rgba(255,255,255,0.022) 1px,
+                rgba(255,255,255,0.025) 1px,
                 transparent 1px
               ),
               linear-gradient(
                 90deg,
-                rgba(255,255,255,0.022) 1px,
+                rgba(255,255,255,0.025) 1px,
                 transparent 1px
               )
             `,
@@ -1012,12 +1008,12 @@ export default function QuantumChat({
           MOBILE BACKDROP
       ================================================== */}
 
-      {sidebarOpen && (
+      {mobileSidebarOpen && (
         <button
           type="button"
           aria-label="Close sidebar"
           onClick={() =>
-            setSidebarOpen(false)
+            setMobileSidebarOpen(false)
           }
           className="absolute inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
         />
@@ -1028,22 +1024,40 @@ export default function QuantumChat({
       ================================================== */}
 
       <aside
-        className={`absolute inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-white/[0.07] bg-[#030712]/95 backdrop-blur-2xl transition-transform duration-300 lg:relative lg:translate-x-0 ${
-          sidebarOpen
-            ? "translate-x-0"
-            : "-translate-x-full lg:translate-x-0"
-        }`}
+        className={`
+          absolute inset-y-0 left-0 z-50
+          flex flex-col
+          border-r border-white/[0.07]
+          bg-[#030712]/96
+          backdrop-blur-2xl
+          transition-all duration-300
+          lg:relative
+          lg:z-20
+          lg:translate-x-0
+          ${
+            mobileSidebarOpen
+              ? "translate-x-0"
+              : "-translate-x-full"
+          }
+          ${
+            desktopSidebarCollapsed
+              ? "lg:w-0 lg:min-w-0 lg:overflow-hidden lg:border-r-0"
+              : "lg:w-[280px] lg:min-w-[280px]"
+          }
+          w-[280px]
+          min-w-[280px]
+        `}
       >
-        <div className="flex h-full flex-col">
+        <div className="flex h-full w-[280px] flex-col">
 
-          {/* BRAND */}
+          {/* SIDEBAR HEADER */}
 
-          <div className="flex h-[76px] shrink-0 items-center gap-3 px-5">
+          <div className="flex h-[72px] shrink-0 items-center gap-3 px-5">
             <div className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-cyan-300/15 bg-cyan-300/[0.06]">
               <Sparkles className="h-4 w-4 text-cyan-300" />
             </div>
 
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-semibold tracking-[0.15em]">
                 QUANTUM
               </p>
@@ -1053,12 +1067,32 @@ export default function QuantumChat({
               </p>
             </div>
 
+            {/* DESKTOP CLOSE */}
+
             <button
               type="button"
               onClick={() =>
-                setSidebarOpen(false)
+                setDesktopSidebarCollapsed(
+                  true
+                )
               }
-              className="ml-auto text-slate-600 lg:hidden"
+              className="ml-auto hidden h-8 w-8 items-center justify-center rounded-lg text-slate-600 transition hover:bg-white/[0.05] hover:text-slate-300 lg:flex"
+              aria-label="Collapse sidebar"
+              title="Collapse sidebar"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </button>
+
+            {/* MOBILE CLOSE */}
+
+            <button
+              type="button"
+              onClick={() =>
+                setMobileSidebarOpen(
+                  false
+                )
+              }
+              className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 transition hover:bg-white/[0.05] hover:text-slate-300 lg:hidden"
               aria-label="Close sidebar"
             >
               <X className="h-4 w-4" />
@@ -1071,22 +1105,23 @@ export default function QuantumChat({
             <button
               type="button"
               onClick={startNewChat}
-              className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm text-slate-300 transition hover:border-cyan-300/20 hover:bg-white/[0.06]"
+              className="group flex w-full items-center gap-3 rounded-xl border border-white/[0.09] bg-white/[0.035] px-4 py-3 text-sm text-slate-300 transition hover:border-cyan-300/20 hover:bg-white/[0.055]"
             >
-              <Plus className="h-4 w-4 text-cyan-300" />
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.05]">
+                <Plus className="h-4 w-4 text-cyan-300 transition group-hover:scale-110" />
+              </span>
 
               New chat
             </button>
           </div>
 
-          {/* SIDEBAR SEARCH */}
+          {/* SEARCH */}
 
           <div className="shrink-0 px-4 pt-5">
-            <div className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
-              <Search className="h-4 w-4 text-slate-600" />
+            <div className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 transition focus-within:border-cyan-300/15">
+              <Search className="h-4 w-4 shrink-0 text-slate-600" />
 
               <input
-                type="text"
                 value={
                   sidebarSearch
                 }
@@ -1107,9 +1142,8 @@ export default function QuantumChat({
           {/* HISTORY */}
 
           <div className="quantum-scroll mt-7 min-h-0 flex-1 overflow-y-auto px-3">
-            <div className="mb-3 flex items-center gap-2 px-2 text-[10px] uppercase tracking-[0.18em] text-slate-600">
+            <div className="mb-3 flex items-center gap-2 px-2 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-600">
               <History className="h-3.5 w-3.5" />
-
               Recent
             </div>
 
@@ -1125,148 +1159,207 @@ export default function QuantumChat({
                 {filteredConversations.map(
                   (
                     conversation
-                  ) => (
-                    <div
-                      key={
-                        conversation._id
-                      }
-                      className={`relative flex min-h-[42px] items-center rounded-xl transition ${
-                        conversationId ===
-                        conversation._id
-                          ? "bg-white/[0.05]"
-                          : "hover:bg-white/[0.03]"
-                      }`}
-                    >
-                      {renamingId ===
-                      conversation._id ? (
-                        <form
-                          className="flex w-full items-center gap-1 px-2 py-1.5"
-                          onSubmit={(
-                            event
-                          ) => {
-                            event.preventDefault();
+                  ) => {
+                    const menuOpen =
+                      openMenuId ===
+                      conversation._id;
 
-                            void saveRename(
-                              conversation._id
-                            );
-                          }}
-                        >
-                          <input
-                            autoFocus
-                            value={
-                              renameValue
-                            }
-                            onChange={(
-                              event
-                            ) =>
-                              setRenameValue(
-                                event
-                                  .target
-                                  .value
-                              )
-                            }
-                            onKeyDown={(
+                    const isRenaming =
+                      renamingId ===
+                      conversation._id;
+
+                    return (
+                      <div
+                        key={
+                          conversation._id
+                        }
+                        className={`
+                          relative flex min-h-[44px] items-center rounded-xl
+                          transition
+                          ${
+                            conversationId ===
+                            conversation._id
+                              ? "bg-white/[0.055]"
+                              : "hover:bg-white/[0.03]"
+                          }
+                        `}
+                      >
+                        {isRenaming ? (
+                          <form
+                            className="flex w-full items-center gap-1 px-2 py-1.5"
+                            onSubmit={(
                               event
                             ) => {
-                              if (
-                                event.key ===
-                                "Escape"
-                              ) {
-                                cancelRename();
-                              }
-                            }}
-                            className="min-w-0 flex-1 rounded-lg border border-cyan-300/15 bg-white/[0.04] px-2.5 py-1.5 text-xs text-slate-300 outline-none focus:border-cyan-300/30"
-                          />
+                              event.preventDefault();
 
-                          <button
-                            type="submit"
-                            className="rounded-lg px-2 py-1.5 text-[10px] text-cyan-300 hover:bg-cyan-300/[0.06]"
-                          >
-                            Save
-                          </button>
-                        </form>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void openConversation(
+                              void saveRename(
                                 conversation._id
-                              )
-                            }
-                            className="min-w-0 flex-1 truncate px-3 py-2.5 text-left text-sm text-slate-500 hover:text-slate-300"
-                          >
-                            {
-                              conversation.title
-                            }
-                          </button>
-
-                          {/* THREE DOTS */}
-
-                          <button
-                            type="button"
-                            aria-label="Conversation options"
-                            onClick={(
-                              event
-                            ) => {
-                              event.stopPropagation();
-
-                              setOpenMenuId(
-                                (
-                                  current
-                                ) =>
-                                  current ===
-                                  conversation._id
-                                    ? null
-                                    : conversation._id
                               );
                             }}
-                            className="mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-700 transition hover:bg-white/[0.06] hover:text-slate-300"
                           >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </button>
-
-                          {/* MENU */}
-
-                          {openMenuId ===
-                            conversation._id && (
-                            <div
-                              onClick={(
+                            <input
+                              autoFocus
+                              value={
+                                renameValue
+                              }
+                              onChange={(
                                 event
                               ) =>
-                                event.stopPropagation()
+                                setRenameValue(
+                                  event
+                                    .target
+                                    .value
+                                )
                               }
-                              className="absolute right-2 top-[42px] z-[100] w-36 overflow-hidden rounded-xl border border-white/[0.08] bg-[#0a0f1d] p-1 shadow-2xl shadow-black/50"
-                            >
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  beginRename(
-                                    conversation
-                                  )
+                              onKeyDown={(
+                                event
+                              ) => {
+                                if (
+                                  event.key ===
+                                  "Escape"
+                                ) {
+                                  cancelRename();
                                 }
-                                className="w-full rounded-lg px-3 py-2 text-left text-xs text-slate-400 hover:bg-white/[0.05] hover:text-slate-200"
-                              >
-                                Rename
-                              </button>
+                              }}
+                              className="min-w-0 flex-1 rounded-lg border border-cyan-300/15 bg-white/[0.04] px-2.5 py-1.5 text-xs text-slate-300 outline-none focus:border-cyan-300/30"
+                            />
 
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  void deleteConversation(
+                            <button
+                              type="submit"
+                              className="rounded-lg px-2 py-1.5 text-[10px] text-cyan-300 transition hover:bg-cyan-300/[0.06]"
+                            >
+                              Save
+                            </button>
+                          </form>
+                        ) : (
+                          <>
+                            {/* CHAT NAME */}
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void openConversation(
+                                  conversation._id
+                                );
+                              }}
+                              className="min-w-0 flex-1 truncate px-3 py-2.5 text-left text-sm text-slate-500 transition hover:text-slate-300"
+                            >
+                              {
+                                conversation.title
+                              }
+                            </button>
+
+                            {/* THREE DOT BUTTON */}
+
+                            <button
+                              type="button"
+                              aria-label={`Options for ${conversation.title}`}
+                              title="Conversation options"
+                              onPointerDown={(
+                                event
+                              ) => {
+                                event.stopPropagation();
+                              }}
+                              onClick={(
+                                event
+                              ) => {
+                                event.stopPropagation();
+
+                                setOpenMenuId(
+                                  (current) =>
+                                    current ===
                                     conversation._id
-                                  );
-                                }}
-                                className="w-full rounded-lg px-3 py-2 text-left text-xs text-red-400 hover:bg-red-400/[0.07]"
+                                      ? null
+                                      : conversation._id
+                                );
+                              }}
+                              className={`
+                                mr-2
+                                flex h-8 w-8 shrink-0
+                                items-center justify-center
+                                rounded-lg
+                                transition
+                                ${
+                                  menuOpen
+                                    ? "bg-white/[0.08] text-slate-200"
+                                    : "text-slate-700 hover:bg-white/[0.06] hover:text-slate-300"
+                                }
+                              `}
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </button>
+
+                            {/* MENU */}
+
+                            {menuOpen && (
+                              <div
+                                onPointerDown={(
+                                  event
+                                ) =>
+                                  event.stopPropagation()
+                                }
+                                onClick={(
+                                  event
+                                ) =>
+                                  event.stopPropagation()
+                                }
+                                className="
+                                  absolute
+                                  right-2
+                                  top-[46px]
+                                  z-[999]
+                                  w-40
+                                  overflow-hidden
+                                  rounded-2xl
+                                  border
+                                  border-white/[0.09]
+                                  bg-[#0b1020]/98
+                                  p-1
+                                  shadow-2xl
+                                  shadow-black/60
+                                  backdrop-blur-2xl
+                                "
                               >
-                                Delete
-                              </button>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )
+                                <button
+                                  type="button"
+                                  onPointerDown={(
+                                    event
+                                  ) =>
+                                    event.stopPropagation()
+                                  }
+                                  onClick={() => {
+                                    beginRename(
+                                      conversation
+                                    );
+                                  }}
+                                  className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-xs text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-100"
+                                >
+                                  Rename
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onPointerDown={(
+                                    event
+                                  ) =>
+                                    event.stopPropagation()
+                                  }
+                                  onClick={() => {
+                                    void deleteConversation(
+                                      conversation._id
+                                    );
+                                  }}
+                                  className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-xs text-red-400 transition hover:bg-red-400/[0.08]"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    );
+                  }
                 )}
               </div>
             )}
@@ -1277,7 +1370,7 @@ export default function QuantumChat({
           <div className="shrink-0 border-t border-white/[0.06] p-4">
             <button
               type="button"
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 hover:bg-white/[0.035]"
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-white/[0.035] hover:text-slate-400"
             >
               <Settings className="h-4 w-4" />
 
@@ -1293,22 +1386,46 @@ export default function QuantumChat({
 
       <section className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 
-        {/* HEADER */}
+        {/* =================================================
+            TOP BAR
+        ================================================= */}
 
         <header className="flex h-[70px] shrink-0 items-center justify-between border-b border-white/[0.05] bg-black/10 px-4 backdrop-blur-2xl sm:px-6">
+
           <div className="flex items-center gap-3">
+
+            {/* MOBILE OPEN */}
+
             <button
               type="button"
               onClick={() =>
-                setSidebarOpen(
+                setMobileSidebarOpen(
                   true
                 )
               }
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-slate-500 lg:hidden"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-slate-500 transition hover:text-slate-200 lg:hidden"
               aria-label="Open sidebar"
             >
               <Menu className="h-4 w-4" />
             </button>
+
+            {/* DESKTOP OPEN */}
+
+            {desktopSidebarCollapsed && (
+              <button
+                type="button"
+                onClick={() =>
+                  setDesktopSidebarCollapsed(
+                    false
+                  )
+                }
+                className="hidden h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-slate-500 transition hover:border-cyan-300/15 hover:text-cyan-300 lg:flex"
+                aria-label="Open sidebar"
+                title="Open sidebar"
+              >
+                <PanelLeftOpen className="h-4 w-4" />
+              </button>
+            )}
 
             <div>
               <p className="text-sm font-medium text-slate-300">
@@ -1325,24 +1442,21 @@ export default function QuantumChat({
             </div>
           </div>
 
-          <div className="hidden items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.025] px-3 py-1.5 text-[9px] tracking-[0.16em] text-slate-700 sm:flex">
-            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
+          {/* STATUS */}
 
-            QUANTUM
+          <div className="hidden items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.025] px-3 py-1.5 text-[9px] tracking-[0.15em] text-slate-700 sm:flex">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300" />
+            LIVE
           </div>
         </header>
 
-        {/* ==================================================
+        {/* =================================================
             CENTERED CHAT
-        ================================================== */}
+        ================================================= */}
 
         <div
-          ref={
-            messageAreaRef
-          }
-          onScroll={
-            handleMessageScroll
-          }
+          ref={messageAreaRef}
+          onScroll={handleMessageScroll}
           className="quantum-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-smooth"
         >
           {messages.length ===
@@ -1357,7 +1471,8 @@ export default function QuantumChat({
             />
           ) : (
             <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
-              <div className="space-y-10 pb-10">
+              <div className="space-y-10 pb-8">
+
                 {messages.map(
                   (
                     item,
@@ -1384,33 +1499,28 @@ export default function QuantumChat({
                 )}
 
                 <div
-                  ref={
-                    bottomRef
-                  }
-                  className="h-4"
+                  ref={bottomRef}
+                  className="h-3"
                 />
               </div>
             </div>
           )}
         </div>
 
-        {/* ==================================================
+        {/* =================================================
             COMPOSER
-        ================================================== */}
+        ================================================= */}
 
-        <div className="shrink-0 border-t border-white/[0.05] bg-[#020617]/85 px-4 pb-4 pt-3 backdrop-blur-2xl sm:px-6">
+        <div className="shrink-0 border-t border-white/[0.05] bg-[#020617]/88 px-4 pb-4 pt-3 backdrop-blur-2xl sm:px-6">
           <div className="mx-auto w-full max-w-3xl">
-            <div className="relative overflow-hidden rounded-[24px] border border-white/[0.10] bg-white/[0.035] p-2 shadow-[0_0_70px_rgba(34,211,238,0.035)] backdrop-blur-2xl transition-all focus-within:border-cyan-300/20 focus-within:shadow-[0_0_90px_rgba(34,211,238,0.07)]">
+
+            <div className="relative overflow-hidden rounded-[24px] border border-white/[0.10] bg-white/[0.035] p-2 shadow-[0_0_70px_rgba(34,211,238,0.025)] backdrop-blur-2xl transition-all duration-200 focus-within:border-cyan-300/20 focus-within:shadow-[0_0_90px_rgba(34,211,238,0.07)]">
 
               <div className="pointer-events-none absolute left-1/2 top-0 h-px w-2/3 -translate-x-1/2 bg-gradient-to-r from-transparent via-cyan-300/40 to-transparent" />
 
               <textarea
-                ref={
-                  textareaRef
-                }
-                value={
-                  message
-                }
+                ref={textareaRef}
+                value={message}
                 onChange={(
                   event
                 ) =>
@@ -1421,19 +1531,18 @@ export default function QuantumChat({
                 onKeyDown={
                   handleKeyDown
                 }
-                disabled={
-                  loading
-                }
+                disabled={loading}
                 rows={1}
                 placeholder="Ask Quantum anything..."
                 className="min-h-[48px] max-h-[140px] w-full resize-none overflow-y-auto bg-transparent px-4 py-3 text-[15px] leading-6 text-slate-200 outline-none placeholder:text-slate-600 disabled:opacity-50"
               />
 
               <div className="flex items-center justify-between px-2 pb-1 pt-1">
+
                 <div className="flex items-center gap-2">
+
                   <div className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/10 bg-cyan-300/[0.025] px-3 py-2 text-[11px] text-slate-500">
                     <Globe2 className="h-3.5 w-3.5 text-cyan-300" />
-
                     Live web
                   </div>
 
@@ -1474,8 +1583,7 @@ export default function QuantumChat({
             </div>
 
             <p className="mt-2 text-center text-[10px] text-slate-700">
-              Quantum can make mistakes. Verify
-              important information.
+              Quantum can make mistakes. Verify important information.
             </p>
           </div>
         </div>
@@ -1516,16 +1624,16 @@ function EmptyState({
         </p>
 
         <h1 className="mt-2 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-          What next,{" "} ?
+          Good morning,{" "}
           <span className="bg-gradient-to-r from-cyan-300 via-sky-300 to-violet-400 bg-clip-text text-transparent">
-            {firstName}?
+            {firstName}
           </span>
         </h1>
 
         <p className="mt-5 max-w-2xl text-base leading-7 text-slate-500">
-          Search the live web, explore complex
-          questions, and get a synthesized answer
-          in one intelligent workspace.
+          Search the live web, explore complex questions,
+          read pages, and get synthesized answers in one
+          intelligent workspace.
         </p>
 
         <div className="mt-9 grid gap-3 sm:grid-cols-2">
@@ -1550,11 +1658,11 @@ function EmptyState({
           />
 
           <PromptCard
-            label="LEARN"
-            text="Explain quantum computing simply."
+            label="PAGE READING"
+            text="Read and explain a web page."
             onClick={() =>
               setMessage(
-                "Explain quantum computing simply."
+                "Read and explain this page: https://nextjs.org/docs"
               )
             }
           />
@@ -1591,17 +1699,17 @@ function PromptCard({
     <button
       type="button"
       onClick={onClick}
-      className="group rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 text-left transition hover:-translate-y-0.5 hover:border-cyan-300/15 hover:bg-white/[0.04]"
+      className="group rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-cyan-300/15 hover:bg-white/[0.04]"
     >
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-[9px] font-semibold tracking-[0.2em] text-slate-700 group-hover:text-cyan-300/60">
+        <span className="text-[9px] font-semibold tracking-[0.2em] text-slate-700 transition group-hover:text-cyan-300/60">
           {label}
         </span>
 
-        <Sparkles className="h-3.5 w-3.5 text-slate-700 group-hover:text-cyan-300" />
+        <Sparkles className="h-3.5 w-3.5 text-slate-700 transition group-hover:text-cyan-300" />
       </div>
 
-      <p className="text-sm leading-6 text-slate-400 group-hover:text-slate-200">
+      <p className="text-sm leading-6 text-slate-400 transition group-hover:text-slate-200">
         {text}
       </p>
     </button>
@@ -1609,7 +1717,7 @@ function PromptCard({
 }
 
 /* =========================================================
-   MESSAGE
+   MESSAGE BUBBLE
 ========================================================= */
 
 function MessageBubble({
@@ -1633,6 +1741,8 @@ function MessageBubble({
     codeId: string
   ) => void;
 }) {
+  /* USER */
+
   if (
     item.role === "user"
   ) {
@@ -1645,9 +1755,14 @@ function MessageBubble({
     );
   }
 
+  /* ASSISTANT */
+
   return (
-    <div className="w-full">
-      <div className="mb-3 flex items-center gap-2">
+    <article className="w-full">
+
+      {/* IDENTITY */}
+
+      <div className="mb-4 flex items-center gap-2">
         <div className="relative flex h-7 w-7 items-center justify-center rounded-lg border border-cyan-300/15 bg-cyan-300/[0.07]">
           <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
         </div>
@@ -1665,6 +1780,8 @@ function MessageBubble({
           )}
       </div>
 
+      {/* RESEARCH */}
+
       {item.research &&
         item.research.length >
           0 && (
@@ -1674,6 +1791,8 @@ function MessageBubble({
             }
           />
         )}
+
+      {/* RESPONSE */}
 
       {item.content ? (
         <FormattedAnswer
@@ -1691,13 +1810,15 @@ function MessageBubble({
         <SearchProgress />
       )}
 
+      {/* SOURCES */}
+
       {item.sources &&
         item.sources.length >
           0 && (
           <div className="mt-7">
-            <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-600">
+            <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-600">
               Sources
-            </p>
+            </div>
 
             <div className="grid gap-2 sm:grid-cols-2">
               {item.sources.map(
@@ -1740,6 +1861,8 @@ function MessageBubble({
           </div>
         )}
 
+      {/* COPY */}
+
       {item.content && (
         <div className="mt-2 flex justify-end">
           <button
@@ -1750,7 +1873,7 @@ function MessageBubble({
                 index
               )
             }
-            className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 hover:bg-white/[0.04] hover:text-slate-400"
+            className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 transition hover:bg-white/[0.04] hover:text-slate-400"
           >
             {copiedMessage ===
             index ? (
@@ -1767,7 +1890,7 @@ function MessageBubble({
           </button>
         </div>
       )}
-    </div>
+    </article>
   );
 }
 
@@ -1786,9 +1909,12 @@ function ResearchPanel({
 
   return (
     <div className="mb-5 overflow-hidden rounded-2xl border border-cyan-300/[0.10] bg-cyan-300/[0.025]">
+
       <div className="flex items-center justify-between border-b border-white/[0.05] px-4 py-3">
         <div className="flex items-center gap-2">
-          <Globe2 className="h-4 w-4 text-cyan-300" />
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-300/[0.06]">
+            <Globe2 className="h-3.5 w-3.5 text-cyan-300" />
+          </div>
 
           <div>
             <p className="text-xs font-medium text-cyan-200">
@@ -1808,7 +1934,10 @@ function ResearchPanel({
 
       <div className="grid gap-2 p-3 sm:grid-cols-2">
         {results.map(
-          (result, index) => (
+          (
+            result,
+            index
+          ) => (
             <a
               key={`${result.url}-${index}`}
               href={
@@ -1845,7 +1974,7 @@ function ResearchPanel({
                   </p>
                 </div>
 
-                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-700 group-hover:text-cyan-300" />
+                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-700 transition group-hover:text-cyan-300" />
               </div>
             </a>
           )
@@ -1856,7 +1985,7 @@ function ResearchPanel({
 }
 
 /* =========================================================
-   MARKDOWN
+   MARKDOWN ANSWER
 ========================================================= */
 
 function FormattedAnswer({
@@ -1910,11 +2039,12 @@ function FormattedAnswer({
             const codeId =
               `${language}-${code.slice(
                 0,
-                50
+                40
               )}`;
 
             return (
-              <div className="my-6 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#030712]">
+              <div className="my-6 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#030712] shadow-xl shadow-black/10">
+
                 <div className="flex items-center justify-between border-b border-white/[0.07] bg-white/[0.025] px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full bg-red-400/60" />
@@ -1934,7 +2064,7 @@ function FormattedAnswer({
                         codeId
                       )
                     }
-                    className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-600 hover:bg-white/[0.05] hover:text-slate-300"
+                    className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-600 transition hover:bg-white/[0.05] hover:text-slate-300"
                   >
                     {copiedCode ===
                     codeId ? (
@@ -1962,7 +2092,9 @@ function FormattedAnswer({
             );
           },
 
-          table({ children }) {
+          table({
+            children,
+          }) {
             return (
               <div className="quantum-scroll my-6 overflow-x-auto rounded-xl border border-white/[0.07]">
                 <table className="m-0 min-w-[620px]">
@@ -1972,7 +2104,10 @@ function FormattedAnswer({
             );
           },
 
-          a({ children, href }) {
+          a({
+            children,
+            href,
+          }) {
             return (
               <a
                 href={href}

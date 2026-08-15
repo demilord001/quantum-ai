@@ -20,10 +20,10 @@ interface RouteContext {
 }
 
 /* =========================================================
-   AUTH HELPER
+   AUTH
 ========================================================= */
 
-async function requireUser() {
+async function getAuthenticatedUser() {
   const {
     isAuthenticated,
     userId,
@@ -40,10 +40,10 @@ async function requireUser() {
 }
 
 /* =========================================================
-   DATABASE HELPER
+   DATABASE
 ========================================================= */
 
-async function getCollection() {
+async function getConversationsCollection() {
   const client =
     await clientPromise;
 
@@ -59,7 +59,7 @@ async function getCollection() {
 }
 
 /* =========================================================
-   GET ONE CONVERSATION
+   GET
 ========================================================= */
 
 export async function GET(
@@ -67,12 +67,8 @@ export async function GET(
   context: RouteContext
 ) {
   try {
-    /* ----------------------------------------------
-       AUTH
-    ---------------------------------------------- */
-
     const userId =
-      await requireUser();
+      await getAuthenticatedUser();
 
     if (!userId) {
       return NextResponse.json(
@@ -85,10 +81,6 @@ export async function GET(
         }
       );
     }
-
-    /* ----------------------------------------------
-       PARAMS
-    ---------------------------------------------- */
 
     const { id } =
       await context.params;
@@ -107,12 +99,8 @@ export async function GET(
       );
     }
 
-    /* ----------------------------------------------
-       DATABASE
-    ---------------------------------------------- */
-
     const conversations =
-      await getCollection();
+      await getConversationsCollection();
 
     const conversation =
       await conversations.findOne(
@@ -120,6 +108,11 @@ export async function GET(
           _id:
             new ObjectId(id),
 
+          /*
+           * This is critical:
+           * users can only read their
+           * own conversations.
+           */
           userId,
         }
       );
@@ -136,16 +129,9 @@ export async function GET(
       );
     }
 
-    /* ----------------------------------------------
-       RESPONSE
-    ---------------------------------------------- */
-
     return NextResponse.json({
       _id:
         conversation._id.toString(),
-
-      userId:
-        conversation.userId,
 
       title:
         conversation.title ||
@@ -194,12 +180,8 @@ export async function PATCH(
   context: RouteContext
 ) {
   try {
-    /* ----------------------------------------------
-       AUTH
-    ---------------------------------------------- */
-
     const userId =
-      await requireUser();
+      await getAuthenticatedUser();
 
     if (!userId) {
       return NextResponse.json(
@@ -212,10 +194,6 @@ export async function PATCH(
         }
       );
     }
-
-    /* ----------------------------------------------
-       PARAMS
-    ---------------------------------------------- */
 
     const { id } =
       await context.params;
@@ -233,10 +211,6 @@ export async function PATCH(
         }
       );
     }
-
-    /* ----------------------------------------------
-       BODY
-    ---------------------------------------------- */
 
     const body =
       await request.json();
@@ -261,22 +235,8 @@ export async function PATCH(
       );
     }
 
-    /* ----------------------------------------------
-       DATABASE
-    ---------------------------------------------- */
-
     const conversations =
-      await getCollection();
-
-    /*
-     * IMPORTANT:
-     *
-     * userId is included in the query.
-     *
-     * This prevents one user from renaming
-     * another user's conversation even if they
-     * somehow know its ObjectId.
-     */
+      await getConversationsCollection();
 
     const result =
       await conversations.updateOne(
@@ -284,6 +244,9 @@ export async function PATCH(
           _id:
             new ObjectId(id),
 
+          /*
+           * User ownership check.
+           */
           userId,
         },
         {
@@ -311,17 +274,13 @@ export async function PATCH(
       );
     }
 
-    /* ----------------------------------------------
-       RESPONSE
-    ---------------------------------------------- */
-
     return NextResponse.json({
       success: true,
       title,
     });
   } catch (error) {
     console.error(
-      "PATCH CONVERSATION ERROR:",
+      "RENAME CONVERSATION ERROR:",
       error
     );
 
@@ -349,12 +308,8 @@ export async function DELETE(
   context: RouteContext
 ) {
   try {
-    /* ----------------------------------------------
-       AUTH
-    ---------------------------------------------- */
-
     const userId =
-      await requireUser();
+      await getAuthenticatedUser();
 
     if (!userId) {
       return NextResponse.json(
@@ -367,10 +322,6 @@ export async function DELETE(
         }
       );
     }
-
-    /* ----------------------------------------------
-       PARAMS
-    ---------------------------------------------- */
 
     const { id } =
       await context.params;
@@ -389,17 +340,8 @@ export async function DELETE(
       );
     }
 
-    /* ----------------------------------------------
-       DATABASE
-    ---------------------------------------------- */
-
     const conversations =
-      await getCollection();
-
-    /*
-     * Again, userId is part of the deletion
-     * filter.
-     */
+      await getConversationsCollection();
 
     const result =
       await conversations.deleteOne(
@@ -407,6 +349,10 @@ export async function DELETE(
           _id:
             new ObjectId(id),
 
+          /*
+           * Again, never allow a user
+           * to delete another user's chat.
+           */
           userId,
         }
       );
@@ -425,10 +371,6 @@ export async function DELETE(
         }
       );
     }
-
-    /* ----------------------------------------------
-       RESPONSE
-    ---------------------------------------------- */
 
     return NextResponse.json({
       success: true,
