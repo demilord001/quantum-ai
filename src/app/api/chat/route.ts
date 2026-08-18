@@ -44,10 +44,7 @@ export const runtime = "nodejs";
 ========================================================= */
 
 interface ClientMessage {
-  role:
-    | "user"
-    | "assistant";
-
+  role: "user" | "assistant";
   content: string;
 }
 
@@ -56,6 +53,22 @@ interface ParsedRequest {
   conversationId: string | null;
   history: ClientMessage[];
   files: File[];
+}
+
+function isClientMessage(
+  item: unknown
+): item is ClientMessage {
+  if (!item || typeof item !== "object") {
+    return false;
+  }
+
+  const message = item as Record<string, unknown>;
+
+  return (
+    (message.role === "user" ||
+      message.role === "assistant") &&
+    typeof message.content === "string"
+  );
 }
 
 /* =========================================================
@@ -70,7 +83,7 @@ const MAX_RESEARCH_CHARS = 700;
 const MAX_PAGE_CHARS = 4000;
 
 /* =========================================================
-   HEALTH CHECK
+   GET / HEALTH CHECK
 ========================================================= */
 
 export async function GET() {
@@ -84,30 +97,22 @@ export async function GET() {
 }
 
 /* =========================================================
-   SETTINGS
+   USER SETTINGS
 ========================================================= */
 
-async function getUserSettings(
-  userId: string
-) {
+async function getUserSettings(userId: string) {
   try {
-    const client =
-      await clientPromise;
+    const client = await clientPromise;
 
-    const db =
-      client.db(
-        process.env.MONGODB_DB ||
-          "quantum"
-      );
+    const db = client.db(
+      process.env.MONGODB_DB || "quantum"
+    );
 
-    const stored =
-      await db
-        .collection(
-          "userSettings"
-        )
-        .findOne({
-          userId,
-        });
+    const stored = await db
+      .collection("userSettings")
+      .findOne({
+        userId,
+      });
 
     if (!stored) {
       return DEFAULT_QUANTUM_SETTINGS;
@@ -136,32 +141,28 @@ function buildHistory(
   history: ClientMessage[],
   compact = false
 ) {
-  const count =
-    compact
-      ? 2
-      : MAX_HISTORY_MESSAGES;
+  const messageLimit = compact
+    ? 2
+    : MAX_HISTORY_MESSAGES;
 
-  const chars =
-    compact
-      ? 800
-      : MAX_HISTORY_CHARS;
+  const characterLimit = compact
+    ? 800
+    : MAX_HISTORY_CHARS;
 
   return history
     .filter(
       (item) =>
         (item.role === "user" ||
           item.role === "assistant") &&
-        typeof item.content ===
-          "string"
+        typeof item.content === "string"
     )
-    .slice(-count)
+    .slice(-messageLimit)
     .map((item) => ({
       role: item.role,
-      content:
-        item.content.slice(
-          0,
-          chars
-        ),
+      content: item.content.slice(
+        0,
+        characterLimit
+      ),
     }));
 }
 
@@ -178,21 +179,18 @@ function buildResearchContext(
   extractedContent?: string,
   compact = false
 ) {
-  const count =
-    compact
-      ? 2
-      : MAX_RESEARCH_RESULTS;
+  const resultLimit = compact
+    ? 2
+    : MAX_RESEARCH_RESULTS;
 
-  const chars =
-    compact
-      ? 450
-      : MAX_RESEARCH_CHARS;
+  const contentLimit = compact
+    ? 450
+    : MAX_RESEARCH_CHARS;
 
-  const sources =
-    results
-      .slice(0, count)
-      .map(
-        (result, index) => `
+  const sources = results
+    .slice(0, resultLimit)
+    .map(
+      (result, index) => `
 SOURCE ${index + 1}
 
 TITLE:
@@ -202,15 +200,13 @@ URL:
 ${result.url || ""}
 
 CONTENT:
-${(
-  result.content || ""
-).slice(
+${(result.content || "").slice(
   0,
-  chars
+  contentLimit
 )}
 `
-      )
-      .join("\n");
+    )
+    .join("\n");
 
   const page =
     extractedContent
@@ -220,9 +216,7 @@ DIRECT PAGE CONTENT:
 
 ${extractedContent.slice(
   0,
-  compact
-    ? 2500
-    : MAX_PAGE_CHARS
+  compact ? 2500 : MAX_PAGE_CHARS
 )}
 `
       : "";
@@ -231,16 +225,12 @@ ${extractedContent.slice(
 }
 
 /* =========================================================
-   GROQ
+   GROQ STREAM
 ========================================================= */
 
 async function createGroqStream(
   messages: Array<{
-    role:
-      | "system"
-      | "user"
-      | "assistant";
-
+    role: "system" | "user" | "assistant";
     content: string;
   }>
 ) {
@@ -253,98 +243,62 @@ async function createGroqStream(
 
     temperature: 0.25,
 
+    /*
+     * Your requested maximum.
+     */
     max_completion_tokens: 4000,
   });
 }
 
 /* =========================================================
-   OVERSIZE DETECTION
+   ERROR HELPERS
 ========================================================= */
 
-function isOversizeError(
-  error: unknown
-) {
-  const text =
-    error instanceof Error
-      ? error.message
-      : String(error);
+function errorText(error: unknown) {
+  return error instanceof Error
+    ? error.message
+    : String(error);
+}
 
+function isOversizeError(error: unknown) {
   const lower =
-    text.toLowerCase();
+    errorText(error).toLowerCase();
 
   return (
-    lower.includes(
-      "request too large"
-    ) ||
-    lower.includes(
-      "too many tokens"
-    ) ||
-    lower.includes(
-      "token limit"
-    ) ||
-    lower.includes(
-      "context"
-    )
+    lower.includes("request too large") ||
+    lower.includes("too many tokens") ||
+    lower.includes("token limit") ||
+    lower.includes("context")
   );
 }
 
-/* =========================================================
-   RATE LIMIT DETECTION
-========================================================= */
-
-function isRateLimitError(
-  error: unknown
-) {
-  const text =
-    error instanceof Error
-      ? error.message
-      : String(error);
-
+function isRateLimitError(error: unknown) {
   const lower =
-    text.toLowerCase();
+    errorText(error).toLowerCase();
 
   return (
-    lower.includes(
-      "rate_limit_exceeded"
-    ) ||
-    lower.includes(
-      "tokens per minute"
-    ) ||
-    lower.includes(
-      "too many requests"
-    ) ||
-    lower.includes(
-      "429"
-    )
+    lower.includes("rate_limit_exceeded") ||
+    lower.includes("tokens per minute") ||
+    lower.includes("too many requests") ||
+    lower.includes("429")
   );
 }
 
-/* =========================================================
-   PROVIDER ERROR MESSAGE
-========================================================= */
-
-function getProviderErrorMessage(
-  error: unknown
-) {
-  const text =
-    error instanceof Error
-      ? error.message
-      : String(error);
-
+function isGroqNetworkBlock(error: unknown) {
   const lower =
-    text.toLowerCase();
+    errorText(error).toLowerCase();
 
-  if (
-    lower.includes(
-      "access denied"
-    ) &&
-    lower.includes(
-      "network settings"
-    )
-  ) {
+  return (
+    lower.includes("access denied") &&
+    lower.includes("network settings")
+  );
+}
+
+function getSafeErrorMessage(error: unknown) {
+  if (isGroqNetworkBlock(error)) {
     return (
-      "Groq denied this network request. " +
-      "This is a Groq/network access issue, not a file-reading error."
+      "Groq denied the current network request. " +
+      "This is a Groq/network access issue, not a Quantum file-processing error."
     );
   }
 
@@ -357,28 +311,28 @@ function getProviderErrorMessage(
 
   if (isOversizeError(error)) {
     return (
-      "The request was too large for the current Groq limit. " +
-      "Quantum automatically reduced the context, but the request still exceeded the limit."
+      "The request was too large for the current Groq limit."
     );
   }
 
-  return text || "Quantum failed.";
+  return (
+    errorText(error) ||
+    "Quantum failed."
+  );
 }
 
 /* =========================================================
-   PARSE REQUEST
+   REQUEST PARSER
 ========================================================= */
 
 async function parseRequest(
   request: NextRequest
 ): Promise<ParsedRequest> {
   const contentType =
-    request.headers.get(
-      "content-type"
-    ) || "";
+    request.headers.get("content-type") || "";
 
   /* -------------------------------------------------------
-     MULTIPART
+     MULTIPART / FILE REQUEST
   ------------------------------------------------------- */
 
   if (
@@ -389,70 +343,48 @@ async function parseRequest(
     const formData =
       await request.formData();
 
-    const message =
-      String(
-        formData.get("message") ||
-          ""
-      ).trim();
+    const message = String(
+      formData.get("message") || ""
+    ).trim();
 
-    const conversationIdRaw =
+    const rawConversationId =
       String(
-        formData.get(
-          "conversationId"
-        ) || ""
+        formData.get("conversationId") || ""
       ).trim();
 
     const conversationId =
-      conversationIdRaw ||
-      null;
+      rawConversationId || null;
 
-    const historyRaw =
-      String(
-        formData.get("history") ||
-          "[]"
-      );
+    let history: ClientMessage[] = [];
 
-    let history: ClientMessage[] =
-      [];
+    const rawHistory = String(
+      formData.get("history") || "[]"
+    );
 
     try {
       const parsed =
-        JSON.parse(
-          historyRaw
-        );
+        JSON.parse(rawHistory);
 
-      if (
-        Array.isArray(parsed)
-      ) {
-        history = parsed.filter(
-          (item) =>
-            item &&
-            (item.role ===
-              "user" ||
-              item.role ===
-                "assistant") &&
-            typeof item.content ===
-              "string"
-        );
+      if (Array.isArray(parsed)) {
+        history = parsed.filter(isClientMessage);
       }
     } catch {
       history = [];
     }
 
-    const files =
-      formData
-        .getAll("files")
-        .filter(
-          (
-            item
-          ): item is File =>
-            item instanceof File &&
-            item.size > 0
-        )
-        .slice(
-          0,
-          MAX_FILES_PER_REQUEST
-        );
+    const files = formData
+      .getAll("files")
+      .filter(
+        (
+          item
+        ): item is File =>
+          item instanceof File &&
+          item.size > 0
+      )
+      .slice(
+        0,
+        MAX_FILES_PER_REQUEST
+      );
 
     return {
       message,
@@ -463,49 +395,20 @@ async function parseRequest(
   }
 
   /* -------------------------------------------------------
-     JSON
+     NORMAL JSON REQUEST
   ------------------------------------------------------- */
 
-  const body =
-    await request.json();
+  const body = await request.json();
 
-  const history =
-    Array.isArray(
-      body?.history
-    )
-      ? body.history.filter(
-          (item: unknown) => {
-            if (
-              !item ||
-              typeof item !==
-                "object"
-            ) {
-              return false;
-            }
-
-            const value =
-              item as Record<
-                string,
-                unknown
-              >;
-
-            return (
-              (value.role ===
-                "user" ||
-                value.role ===
-                  "assistant") &&
-              typeof value.content ===
-                "string"
-            );
-          }
-        )
+  const history: ClientMessage[] =
+    Array.isArray(body?.history)
+      ? body.history.filter(isClientMessage)
       : [];
 
   return {
-    message:
-      String(
-        body?.message || ""
-      ).trim(),
+    message: String(
+      body?.message || ""
+    ).trim(),
 
     conversationId:
       typeof body?.conversationId ===
@@ -520,18 +423,16 @@ async function parseRequest(
 }
 
 /* =========================================================
-   POST
+   POST / CHAT
 ========================================================= */
 
 export async function POST(
   request: NextRequest
 ) {
-  const encoder =
-    new TextEncoder();
+  const encoder = new TextEncoder();
 
   const sendEvent = (
-    controller:
-      ReadableStreamDefaultController,
+    controller: ReadableStreamDefaultController,
     payload: unknown
   ) => {
     controller.enqueue(
@@ -545,7 +446,7 @@ export async function POST(
 
   try {
     /* =====================================================
-       AUTH
+       AUTHENTICATION
     ===================================================== */
 
     const {
@@ -553,10 +454,7 @@ export async function POST(
       userId,
     } = await auth();
 
-    if (
-      !isAuthenticated ||
-      !userId
-    ) {
+    if (!isAuthenticated || !userId) {
       return Response.json(
         {
           error:
@@ -569,16 +467,14 @@ export async function POST(
     }
 
     /* =====================================================
-       PARSE
+       PARSE REQUEST
     ===================================================== */
 
     let parsed: ParsedRequest;
 
     try {
       parsed =
-        await parseRequest(
-          request
-        );
+        await parseRequest(request);
     } catch (error) {
       console.error(
         "REQUEST PARSE ERROR:",
@@ -616,14 +512,12 @@ export async function POST(
     }
 
     /* =====================================================
-       VALIDATE CONVERSATION ID
+       VALIDATE CONVERSATION
     ===================================================== */
 
     if (
       conversationId &&
-      !ObjectId.isValid(
-        conversationId
-      )
+      !ObjectId.isValid(conversationId)
     ) {
       return Response.json(
         {
@@ -641,9 +535,7 @@ export async function POST(
     ===================================================== */
 
     const settings =
-      await getUserSettings(
-        userId
-      );
+      await getUserSettings(userId);
 
     /* =====================================================
        FILE EXTRACTION
@@ -657,14 +549,10 @@ export async function POST(
       error: string;
     }> = [];
 
-    for (
-      const file of files
-    ) {
+    for (const file of files) {
       try {
         const extracted =
-          await extractFile(
-            file
-          );
+          await extractFile(file);
 
         extractedFiles.push(
           extracted
@@ -676,12 +564,10 @@ export async function POST(
         );
 
         fileErrors.push({
-          name:
-            file.name,
+          name: file.name,
 
           error:
-            error instanceof
-            Error
+            error instanceof Error
               ? error.message
               : "Could not read file.",
         });
@@ -689,24 +575,20 @@ export async function POST(
     }
 
     const hasFiles =
-      extractedFiles.length >
-      0;
+      extractedFiles.length > 0;
 
-    const fileContext =
-      hasFiles
-        ? buildFileContext(
-            extractedFiles
-          )
-        : "";
+    const fileContext = hasFiles
+      ? buildFileContext(
+          extractedFiles
+        )
+      : "";
 
     /* =====================================================
-       SEARCH
+       SEARCH DECISION
     ===================================================== */
 
     const automaticSearch =
-      shouldSearch(
-        message
-      );
+      shouldSearch(message);
 
     const needsSearch =
       settings.searchMode ===
@@ -720,9 +602,7 @@ export async function POST(
 
     const stream =
       new ReadableStream({
-        async start(
-          controller
-        ) {
+        async start(controller) {
           let fullAnswer = "";
 
           let researchData:
@@ -734,25 +614,22 @@ export async function POST(
             | null = null;
 
           try {
-            /* =============================================
+            /* =================================================
                FILE STATUS
-            ============================================= */
+            ================================================= */
 
             if (
               hasFiles ||
-              fileErrors.length
+              fileErrors.length > 0
             ) {
               sendEvent(
                 controller,
                 {
-                  type:
-                    "files",
+                  type: "files",
 
                   files:
                     extractedFiles.map(
-                      (
-                        file
-                      ) => ({
+                      (file) => ({
                         name:
                           file.name,
 
@@ -773,15 +650,14 @@ export async function POST(
               );
             }
 
-            /* =============================================
-               STATUS
-            ============================================= */
+            /* =================================================
+               INITIAL STATUS
+            ================================================= */
 
             sendEvent(
               controller,
               {
-                type:
-                  "status",
+                type: "status",
 
                 status:
                   needsSearch
@@ -792,13 +668,11 @@ export async function POST(
               }
             );
 
-            /* =============================================
-               WEB RESEARCH
-            ============================================= */
+            /* =================================================
+               TAVILY
+            ================================================= */
 
-            if (
-              needsSearch
-            ) {
+            if (needsSearch) {
               try {
                 researchData =
                   await researchWeb(
@@ -842,14 +716,17 @@ export async function POST(
                   error
                 );
 
-                researchData =
-                  null;
+                /*
+                 * Search failure should not
+                 * kill the AI answer.
+                 */
+                researchData = null;
               }
             }
 
-            /* =============================================
+            /* =================================================
                SYSTEM PROMPT
-            ============================================= */
+            ================================================= */
 
             const systemPrompt =
               buildQuantumSystemPrompt({
@@ -861,9 +738,9 @@ export async function POST(
                 settings,
               });
 
-            /* =============================================
+            /* =================================================
                USER PROMPT
-            ============================================= */
+            ================================================= */
 
             let userPrompt =
               message;
@@ -875,14 +752,14 @@ ATTACHED FILES:
 
 ${fileContext}
 
-Use the attached files as primary source material
+Use these files as source material
 for file-related questions.
 
-Do not invent information that is not present in
-the supplied file content.
+Do not invent information that is not
+present in the supplied files.
 
-If the file was truncated, acknowledge that when
-it materially affects the answer.
+If content was truncated and that matters,
+say so clearly.
 `;
             }
 
@@ -899,44 +776,43 @@ LIVE WEB RESEARCH:
 
 ${researchContext}
 
-Use the supplied research when useful.
+Use the supplied research where relevant.
 
-Cite relevant sources as [1], [2], [3].
+Cite useful sources as [1], [2], [3].
 
 Do not invent unsupported information.
 `;
             }
 
-            /* =============================================
+            /* =================================================
                MODEL MESSAGES
-            ============================================= */
+            ================================================= */
 
-            let modelMessages =
-              [
-                {
-                  role:
-                    "system" as const,
+            let modelMessages = [
+              {
+                role:
+                  "system" as const,
 
-                  content:
-                    systemPrompt,
-                },
+                content:
+                  systemPrompt,
+              },
 
-                ...buildHistory(
-                  history
-                ),
+              ...buildHistory(
+                history
+              ),
 
-                {
-                  role:
-                    "user" as const,
+              {
+                role:
+                  "user" as const,
 
-                  content:
-                    userPrompt,
-                },
-              ];
+                content:
+                  userPrompt,
+              },
+            ];
 
-            /* =============================================
-               GROQ REQUEST
-            ============================================= */
+            /* =================================================
+               GROQ
+            ================================================= */
 
             let groqStream;
 
@@ -951,6 +827,10 @@ Do not invent unsupported information.
                 firstError
               );
 
+              /*
+               * If it is not an oversized request,
+               * don't blindly retry it.
+               */
               if (
                 !isOversizeError(
                   firstError
@@ -959,9 +839,9 @@ Do not invent unsupported information.
                 throw firstError;
               }
 
-              /* -------------------------------------------
+              /* ===============================================
                  COMPACT RETRY
-              ------------------------------------------- */
+              =============================================== */
 
               const compactResearch =
                 researchData
@@ -1016,83 +896,64 @@ ${compactResearch}
 Give a complete but focused answer.
 `;
 
-              modelMessages =
-                [
-                  {
-                    role:
-                      "system",
+              modelMessages = [
+                {
+                  role: "system",
 
-                    content:
-                      systemPrompt,
-                  },
+                  content:
+                    systemPrompt,
+                },
 
-                  ...buildHistory(
-                    history,
-                    true
-                  ),
+                ...buildHistory(
+                  history,
+                  true
+                ),
 
-                  {
-                    role:
-                      "user",
+                {
+                  role: "user",
 
-                    content:
-                      compactPrompt,
-                  },
-                ];
+                  content:
+                    compactPrompt,
+                },
+              ];
 
-              try {
-                groqStream =
-                  await createGroqStream(
-                    modelMessages
-                  );
-              } catch (
-                secondError
-              ) {
-                console.error(
-                  "COMPACT GROQ ERROR:",
-                  secondError
+              groqStream =
+                await createGroqStream(
+                  modelMessages
                 );
-
-                throw secondError;
-              }
             }
 
-            /* =============================================
-               STREAM
-            ============================================= */
+            /* =================================================
+               STREAM ANSWER
+            ================================================= */
 
             for await (
-              const chunk of
-                groqStream
+              const chunk of groqStream
             ) {
               const text =
                 chunk
                   .choices[0]
                   ?.delta
-                  ?.content ||
-                "";
+                  ?.content || "";
 
               if (!text) {
                 continue;
               }
 
-              fullAnswer +=
-                text;
+              fullAnswer += text;
 
               sendEvent(
                 controller,
                 {
-                  type:
-                    "chunk",
-
+                  type: "chunk",
                   text,
                 }
               );
             }
 
-            /* =============================================
-               MONGODB
-            ============================================= */
+            /* =================================================
+               DATABASE
+            ================================================= */
 
             const client =
               await clientPromise;
@@ -1102,6 +963,10 @@ Give a complete but focused answer.
                 process.env.MONGODB_DB ||
                   "quantum"
               );
+
+            /* =================================================
+               RESEARCH DATA
+            ================================================= */
 
             const researchItems =
               researchData?.results ||
@@ -1125,6 +990,10 @@ Give a complete but focused answer.
               settings.showSources
                 ? sourceItems
                 : [];
+
+            /* =================================================
+               USER MESSAGE
+            ================================================= */
 
             const userMessage = {
               role: "user",
@@ -1152,10 +1021,15 @@ Give a complete but focused answer.
                 new Date(),
             };
 
+            /* =================================================
+               ASSISTANT MESSAGE
+            ================================================= */
+
             const assistantMessage = {
               role: "assistant",
 
-              content: fullAnswer,
+              content:
+                fullAnswer,
 
               sources,
 
@@ -1169,13 +1043,11 @@ Give a complete but focused answer.
             let savedConversationId =
               conversationId;
 
-            /* =============================================
-               SAVE EXISTING
-            ============================================= */
+            /* =================================================
+               EXISTING CONVERSATION
+            ================================================= */
 
-            if (
-              conversationId
-            ) {
+            if (conversationId) {
               const update =
                 await db
                   .collection(
@@ -1193,13 +1065,12 @@ Give a complete but focused answer.
 
                     {
                       $push: {
-                        messages:
-                          {
-                            $each: [
-                              userMessage,
-                              assistantMessage,
-                            ],
-                          },
+                        messages: {
+                          $each: [
+                            userMessage,
+                            assistantMessage,
+                          ],
+                        },
                       } as any,
 
                       $set: {
@@ -1218,55 +1089,74 @@ Give a complete but focused answer.
                 );
               }
             } else {
-              /* =========================================
+              /* =================================================
                  NEW CONVERSATION
-              ========================================= */
+              ================================================= */
 
-             const title =
-  await generateConversationTitle({
-    userMessage:
-      message,
+              /*
+               * IMPORTANT:
+               *
+               * The title generator now receives the
+               * complete answer and can generate a
+               * semantic topic title instead of simply
+               * copying the user's first prompt.
+               */
 
-    assistantAnswer:
-      fullAnswer,
-  });
+              let title =
+                "New Chat";
 
-const created =
-  await db
-    .collection(
-      "conversations"
-    )
-    .insertOne({
-      userId,
+              try {
+                title =
+                  await generateConversationTitle(
+                    {
+                      userMessage:
+                        message,
 
-      title,
+                      assistantAnswer:
+                        fullAnswer,
+                    }
+                  );
+              } catch (error) {
+                console.error(
+                  "TITLE GENERATION ERROR:",
+                  error
+                );
+              }
 
-      messages: [
-        userMessage,
-        assistantMessage,
-      ],
+              const created =
+                await db
+                  .collection(
+                    "conversations"
+                  )
+                  .insertOne({
+                    userId,
 
-      createdAt:
-        new Date(),
+                    title,
 
-      updatedAt:
-        new Date(),
-    });
+                    messages: [
+                      userMessage,
+                      assistantMessage,
+                    ],
 
-savedConversationId =
-  created.insertedId.toString();
+                    createdAt:
+                      new Date(),
 
+                    updatedAt:
+                      new Date(),
+                  });
+
+              savedConversationId =
+                created.insertedId.toString();
             }
 
-            /* =============================================
-               COMPLETE
-            ============================================= */
+            /* =================================================
+               DONE
+            ================================================= */
 
             sendEvent(
               controller,
               {
-                type:
-                  "done",
+                type: "done",
 
                 conversationId:
                   savedConversationId,
@@ -1309,7 +1199,7 @@ savedConversationId =
                   "error",
 
                 error:
-                  getProviderErrorMessage(
+                  getSafeErrorMessage(
                     error
                   ),
               }
@@ -1347,7 +1237,7 @@ savedConversationId =
     return Response.json(
       {
         error:
-          getProviderErrorMessage(
+          getSafeErrorMessage(
             error
           ),
       },
