@@ -1222,51 +1222,40 @@ Give a complete but focused answer.
                  NEW CONVERSATION
               ========================================= */
 
-              let title =
-                "New Conversation";
+             const title =
+  await generateConversationTitle({
+    userMessage:
+      message,
 
-              try {
-                title =
-                  await generateConversationTitle(
-                    {
-                      userMessage:
-                        message,
+    assistantAnswer:
+      fullAnswer,
+  });
 
-                      assistantAnswer:
-                        fullAnswer,
-                    }
-                  );
-              } catch (error) {
-                console.error(
-                  "TITLE GENERATION ERROR:",
-                  error
-                );
-              }
+const created =
+  await db
+    .collection(
+      "conversations"
+    )
+    .insertOne({
+      userId,
 
-              const created =
-                await db
-                  .collection(
-                    "conversations"
-                  )
-                  .insertOne({
-                    userId,
+      title,
 
-                    title,
+      messages: [
+        userMessage,
+        assistantMessage,
+      ],
 
-                    messages: [
-                      userMessage,
-                      assistantMessage,
-                    ],
+      createdAt:
+        new Date(),
 
-                    createdAt:
-                      new Date(),
+      updatedAt:
+        new Date(),
+    });
 
-                    updatedAt:
-                      new Date(),
-                  });
+savedConversationId =
+  created.insertedId.toString();
 
-              savedConversationId =
-                created.insertedId.toString();
             }
 
             /* =============================================
