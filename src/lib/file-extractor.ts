@@ -1,32 +1,19 @@
+import "pdf-parse/worker";
+
 import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
 
-/* =========================================================
-   LIMITS
-========================================================= */
-
 export const MAX_FILE_SIZE =
-  10 * 1024 * 1024; // 10 MB
+  10 * 1024 * 1024;
 
-export const MAX_FILES_PER_REQUEST = 5;
+export const MAX_FILES_PER_REQUEST =
+  3;
 
-/*
- * Total extracted file characters that will be sent
- * into the model context.
- */
 export const MAX_TOTAL_FILE_TEXT =
-  12_000;
+  12000;
 
-/*
- * Maximum extracted characters retained from
- * an individual file.
- */
 export const MAX_FILE_TEXT =
-  7_000;
-
-/* =========================================================
-   TYPES
-========================================================= */
+  7000;
 
 export interface ExtractedFile {
   name: string;
@@ -36,11 +23,7 @@ export interface ExtractedFile {
   truncated: boolean;
 }
 
-/* =========================================================
-   SUPPORTED EXTENSIONS
-========================================================= */
-
-export const SUPPORTED_EXTENSIONS = [
+const SUPPORTED_EXTENSIONS = [
   ".txt",
   ".md",
   ".markdown",
@@ -48,42 +31,34 @@ export const SUPPORTED_EXTENSIONS = [
   ".json",
   ".pdf",
   ".docx",
-] as const;
+];
 
-/* =========================================================
-   HELPERS
-========================================================= */
-
-function getExtension(
+function extension(
   filename: string
 ) {
-  const lower =
+  const name =
     filename.toLowerCase();
 
-  const index =
-    lower.lastIndexOf(".");
+  const position =
+    name.lastIndexOf(".");
 
-  if (index === -1) {
-    return "";
-  }
-
-  return lower.slice(index);
+  return position === -1
+    ? ""
+    : name.slice(position);
 }
 
 export function isSupportedFile(
   file: File
 ) {
-  return (
-    SUPPORTED_EXTENSIONS as readonly string[]
-  ).includes(
-    getExtension(file.name)
+  return SUPPORTED_EXTENSIONS.includes(
+    extension(file.name)
   );
 }
 
-function normalizeText(
-  text: string
+function cleanText(
+  value: string
 ) {
-  return text
+  return value
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
     .replace(/[ \t]+/g, " ")
@@ -91,30 +66,26 @@ function normalizeText(
     .trim();
 }
 
-function truncateText(
-  text: string,
+function truncate(
+  value: string,
   limit = MAX_FILE_TEXT
 ) {
-  const normalized =
-    normalizeText(text);
+  const cleaned =
+    cleanText(value);
 
   return {
     text:
-      normalized.slice(
+      cleaned.slice(
         0,
         limit
       ),
 
     truncated:
-      normalized.length > limit,
+      cleaned.length > limit,
   };
 }
 
-/* =========================================================
-   TEXT FILES
-========================================================= */
-
-async function extractTextFile(
+async function readTextFile(
   file: File
 ): Promise<ExtractedFile> {
   const buffer =
@@ -123,31 +94,25 @@ async function extractTextFile(
     );
 
   const result =
-    truncateText(
-      buffer.toString("utf8")
+    truncate(
+      buffer.toString(
+        "utf8"
+      )
     );
 
   return {
     name: file.name,
-
     size: file.size,
-
     type:
       file.type ||
       "text/plain",
-
     text: result.text,
-
     truncated:
       result.truncated,
   };
 }
 
-/* =========================================================
-   PDF
-========================================================= */
-
-async function extractPdfFile(
+async function readPdf(
   file: File
 ): Promise<ExtractedFile> {
   const buffer =
@@ -164,34 +129,26 @@ async function extractPdfFile(
     const result =
       await parser.getText();
 
-    const extracted =
-      truncateText(
+    const limited =
+      truncate(
         result.text || ""
       );
 
     return {
       name: file.name,
-
       size: file.size,
-
       type:
         "application/pdf",
-
-      text: extracted.text,
-
+      text: limited.text,
       truncated:
-        extracted.truncated,
+        limited.truncated,
     };
   } finally {
     await parser.destroy();
   }
 }
 
-/* =========================================================
-   DOCX
-========================================================= */
-
-async function extractDocxFile(
+async function readDocx(
   file: File
 ): Promise<ExtractedFile> {
   const buffer =
@@ -204,73 +161,68 @@ async function extractDocxFile(
       buffer,
     });
 
-  const extracted =
-    truncateText(
+  const limited =
+    truncate(
       result.value || ""
     );
 
   return {
     name: file.name,
-
     size: file.size,
 
     type:
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 
-    text: extracted.text,
+    text: limited.text,
 
     truncated:
-      extracted.truncated,
+      limited.truncated,
   };
 }
-
-/* =========================================================
-   MAIN EXTRACTOR
-========================================================= */
 
 export async function extractFile(
   file: File
 ): Promise<ExtractedFile> {
-  if (!(file instanceof File)) {
+  if (
+    !(file instanceof File)
+  ) {
     throw new Error(
       "Invalid uploaded file."
     );
   }
 
-  if (file.size > MAX_FILE_SIZE) {
+  if (
+    file.size >
+    MAX_FILE_SIZE
+  ) {
     throw new Error(
-      `${file.name} is larger than 10 MB. Maximum size is 10 MB.`
+      `${file.name} is larger than 10 MB.`
     );
   }
 
-  if (!isSupportedFile(file)) {
+  if (
+    !isSupportedFile(file)
+  ) {
     throw new Error(
       `Unsupported file type: ${file.name}`
     );
   }
 
-  const extension =
-    getExtension(
-      file.name
-    );
-
-  switch (extension) {
+  switch (
+    extension(file.name)
+  ) {
     case ".pdf":
-      return extractPdfFile(
-        file
-      );
+      return readPdf(file);
 
     case ".docx":
-      return extractDocxFile(
-        file
-      );
+      return readDocx(file);
 
     case ".txt":
     case ".md":
     case ".markdown":
     case ".csv":
     case ".json":
-      return extractTextFile(
+      return readTextFile(
         file
       );
 
@@ -280,10 +232,6 @@ export async function extractFile(
       );
   }
 }
-
-/* =========================================================
-   BUILD MODEL CONTEXT
-========================================================= */
 
 export function buildFileContext(
   files: ExtractedFile[]
@@ -314,8 +262,7 @@ export function buildFileContext(
     remaining -=
       text.length;
 
-    sections.push(
-      `
+    sections.push(`
 FILE ${index + 1}
 
 NAME:
@@ -331,14 +278,13 @@ ${
   file.truncated ||
   text.length <
     file.text.length
-    ? "NOTE: This file was truncated to stay within Quantum's context budget."
+    ? "This file was truncated to stay within Quantum's context budget."
     : ""
 }
-`
-    );
+`);
   }
 
   return sections.join(
-    "\n"
+    "\n\n"
   );
 }
