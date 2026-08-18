@@ -1,7 +1,7 @@
 import Groq from "groq-sdk";
 
 export const QUANTUM_MODEL =
-  "llama-3.3-70b-versatile";
+  "openai/gpt-oss-120b";
 
 if (!process.env.GROQ_API_KEY) {
   throw new Error(

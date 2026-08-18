@@ -7,23 +7,27 @@ import {
   useState,
 } from "react";
 
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import Link from "next/link";
 
 import {
   UserButton,
 } from "@clerk/nextjs";
+
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import {
   ArrowUp,
   Check,
   Copy,
   ExternalLink,
+  FileText,
   Globe2,
   History,
   Loader2,
   Menu,
   MoreHorizontal,
+  Paperclip,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -32,6 +36,18 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+
+import {
+  DEFAULT_QUANTUM_SETTINGS,
+} from "@/lib/quantum-settings";
+
+import type {
+  QuantumSettings,
+} from "@/lib/quantum-settings";
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 interface Source {
   title: string;
@@ -52,6 +68,24 @@ interface ResearchResult {
     | "youtube";
 }
 
+interface ChatAttachment {
+  name: string;
+  size: number;
+  type: string;
+}
+
+interface FileResult {
+  name: string;
+  size: number;
+  type: string;
+  truncated: boolean;
+}
+
+interface FileError {
+  name: string;
+  error: string;
+}
+
 interface Message {
   role:
     | "user"
@@ -64,18 +98,28 @@ interface Message {
   research?: ResearchResult[];
 
   streamId?: string;
+
+  attachments?: ChatAttachment[];
+
+  fileResults?: FileResult[];
+
+  fileErrors?: FileError[];
 }
 
 interface Conversation {
   _id: string;
-
   title: string;
-
   messages: Message[];
-
   createdAt?: string;
-
   updatedAt?: string;
+}
+
+interface AttachedFile {
+  id: string;
+  file: File;
+  name: string;
+  size: number;
+  type: string;
 }
 
 type SearchStatus =
@@ -88,16 +132,44 @@ type SearchStatus =
 
 interface QuantumChatProps {
   firstName: string;
+  initialSettings: QuantumSettings;
 }
+
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
+const SUPPORTED_EXTENSIONS = [
+  ".txt",
+  ".md",
+  ".markdown",
+  ".csv",
+  ".json",
+  ".pdf",
+  ".docx",
+];
+
+const MAX_FILES = 5;
+
+/* =========================================================
+   COMPONENT
+========================================================= */
 
 export default function QuantumChat({
   firstName,
+  initialSettings,
 }: QuantumChatProps) {
-  const [message, setMessage] =
-    useState("");
+  const [
+    message,
+    setMessage,
+  ] = useState("");
 
-  const [messages, setMessages] =
-    useState<Message[]>([]);
+  const [
+    messages,
+    setMessages,
+  ] = useState<Message[]>(
+    []
+  );
 
   const [
     conversations,
@@ -114,8 +186,10 @@ export default function QuantumChat({
       null
     );
 
-  const [loading, setLoading] =
-    useState(false);
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
 
   const [
     searchStatus,
@@ -126,14 +200,38 @@ export default function QuantumChat({
     );
 
   const [
-    desktopSidebarCollapsed,
-    setDesktopSidebarCollapsed,
+    settings,
+    setSettings,
   ] =
-    useState(false);
+    useState<QuantumSettings>(
+      initialSettings ??
+        DEFAULT_QUANTUM_SETTINGS
+    );
+
+  const effectiveSettings =
+    settings ??
+    DEFAULT_QUANTUM_SETTINGS;
 
   const [
-    mobileSidebarOpen,
-    setMobileSidebarOpen,
+    attachedFiles,
+    setAttachedFiles,
+  ] = useState<
+    AttachedFile[]
+  >([]);
+
+  const [
+    isDraggingFiles,
+    setIsDraggingFiles,
+  ] = useState(false);
+
+  const [
+    desktopCollapsed,
+    setDesktopCollapsed,
+  ] = useState(false);
+
+  const [
+    mobileOpen,
+    setMobileOpen,
   ] = useState(false);
 
   const [
@@ -145,8 +243,8 @@ export default function QuantumChat({
     );
 
   const [
-    renamingId,
-    setRenamingId,
+    renameId,
+    setRenameId,
   ] =
     useState<string | null>(
       null
@@ -187,6 +285,11 @@ export default function QuantumChat({
       null
     );
 
+  const fileInputRef =
+    useRef<HTMLInputElement | null>(
+      null
+    );
+
   const messageAreaRef =
     useRef<HTMLDivElement | null>(
       null
@@ -197,9 +300,9 @@ export default function QuantumChat({
       null
     );
 
-  /* =======================================================
-     CONVERSATIONS
-  ======================================================= */
+  /* =========================================================
+     LOAD CONVERSATIONS
+  ========================================================== */
 
   const loadConversations =
     useCallback(async () => {
@@ -208,8 +311,8 @@ export default function QuantumChat({
           await fetch(
             "/api/conversations",
             {
-              method: "GET",
-              cache: "no-store",
+              cache:
+                "no-store",
             }
           );
 
@@ -220,12 +323,14 @@ export default function QuantumChat({
         const data =
           await response.json();
 
-        if (Array.isArray(data)) {
+        if (
+          Array.isArray(data)
+        ) {
           setConversations(data);
         }
       } catch (error) {
         console.error(
-          "Conversation loading error:",
+          "LOAD CONVERSATIONS ERROR:",
           error
         );
       }
@@ -235,9 +340,60 @@ export default function QuantumChat({
     void loadConversations();
   }, [loadConversations]);
 
-  /* =======================================================
+  /* =========================================================
+     REFRESH SETTINGS
+  ========================================================== */
+
+  useEffect(() => {
+    async function refreshSettings() {
+      try {
+        const response =
+          await fetch(
+            "/api/settings",
+            {
+              cache:
+                "no-store",
+            }
+          );
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data =
+          await response.json();
+
+        if (
+          data?.settings
+        ) {
+          setSettings(
+            data.settings ??
+              DEFAULT_QUANTUM_SETTINGS
+          );
+        }
+      } catch {}
+    }
+
+    function handleFocus() {
+      void refreshSettings();
+    }
+
+    window.addEventListener(
+      "focus",
+      handleFocus
+    );
+
+    return () => {
+      window.removeEventListener(
+        "focus",
+        handleFocus
+      );
+    };
+  }, []);
+
+  /* =========================================================
      ESC
-  ======================================================= */
+  ========================================================== */
 
   useEffect(() => {
     function handleEscape(
@@ -248,10 +404,8 @@ export default function QuantumChat({
         "Escape"
       ) {
         setOpenMenuId(null);
-        setRenamingId(null);
-        setMobileSidebarOpen(
-          false
-        );
+        setRenameId(null);
+        setMobileOpen(false);
       }
     }
 
@@ -260,16 +414,17 @@ export default function QuantumChat({
       handleEscape
     );
 
-    return () =>
+    return () => {
       window.removeEventListener(
         "keydown",
         handleEscape
       );
+    };
   }, []);
 
-  /* =======================================================
-     SCROLL
-  ======================================================= */
+  /* =========================================================
+     AUTO SCROLL
+  ========================================================== */
 
   useEffect(() => {
     if (!autoScroll) {
@@ -278,9 +433,10 @@ export default function QuantumChat({
 
     bottomRef.current?.scrollIntoView(
       {
-        behavior: loading
-          ? "auto"
-          : "smooth",
+        behavior:
+          loading
+            ? "auto"
+            : "smooth",
 
         block: "end",
       }
@@ -292,45 +448,247 @@ export default function QuantumChat({
   ]);
 
   function handleMessageScroll() {
-    const element =
+    const container =
       messageAreaRef.current;
 
-    if (!element) {
+    if (!container) {
       return;
     }
 
     const distance =
-      element.scrollHeight -
-      element.scrollTop -
-      element.clientHeight;
+      container.scrollHeight -
+      container.scrollTop -
+      container.clientHeight;
 
     setAutoScroll(
-      distance < 160
+      distance < 150
     );
   }
 
-  /* =======================================================
-     NEW CHAT
-  ======================================================= */
+  /* =========================================================
+     FILE HELPERS
+  ========================================================== */
 
-  function startNewChat() {
+  function getExtension(
+    filename: string
+  ) {
+    const lower =
+      filename.toLowerCase();
+
+    const index =
+      lower.lastIndexOf(".");
+
+    if (
+      index === -1
+    ) {
+      return "";
+    }
+
+    return lower.slice(
+      index
+    );
+  }
+
+  function isSupportedClientFile(
+    file: File
+  ) {
+    return SUPPORTED_EXTENSIONS.includes(
+      getExtension(
+        file.name
+      )
+    );
+  }
+
+  function formatFileSize(
+    bytes: number
+  ) {
+    if (
+      bytes <
+      1024
+    ) {
+      return `${bytes} B`;
+    }
+
+    if (
+      bytes <
+      1024 * 1024
+    ) {
+      return `${(
+        bytes / 1024
+      ).toFixed(1)} KB`;
+    }
+
+    return `${(
+      bytes /
+      (1024 * 1024)
+    ).toFixed(1)} MB`;
+  }
+
+  function addFiles(
+    files: File[]
+  ) {
+    const valid =
+      files.filter(
+        (
+          file
+        ) =>
+          isSupportedClientFile(
+            file
+          )
+      );
+
+    if (
+      !valid.length
+    ) {
+      return;
+    }
+
+    const newFiles =
+      valid.map(
+        (file) => ({
+          id:
+            `${file.name}-${file.size}-${file.lastModified}-${Math.random()
+              .toString(36)
+              .slice(2)}`,
+
+          file,
+
+          name:
+            file.name,
+
+          size:
+            file.size,
+
+          type:
+            file.type ||
+            "application/octet-stream",
+        })
+      );
+
+    setAttachedFiles(
+      (previous) =>
+        [
+          ...previous,
+          ...newFiles,
+        ].slice(
+          0,
+          MAX_FILES
+        )
+    );
+  }
+
+  function removeFile(
+    id: string
+  ) {
+    setAttachedFiles(
+      (previous) =>
+        previous.filter(
+          (item) =>
+            item.id !== id
+        )
+    );
+  }
+
+  function handleComposerPaste(
+    event: React.ClipboardEvent<HTMLTextAreaElement>
+  ) {
+    const files =
+      Array.from(
+        event.clipboardData
+          .files
+      );
+
+    const supported =
+      files.filter(
+        (file) =>
+          isSupportedClientFile(
+            file
+          )
+      );
+
+    if (
+      supported.length
+    ) {
+      event.preventDefault();
+
+      addFiles(
+        supported
+      );
+    }
+  }
+
+  function handleDragEnter(
+    event: React.DragEvent
+  ) {
+    event.preventDefault();
+
+    setIsDraggingFiles(
+      true
+    );
+  }
+
+  function handleDragOver(
+    event: React.DragEvent
+  ) {
+    event.preventDefault();
+  }
+
+  function handleDragLeave(
+    event: React.DragEvent
+  ) {
+    event.preventDefault();
+
+    if (
+      event.currentTarget ===
+      event.target
+    ) {
+      setIsDraggingFiles(
+        false
+      );
+    }
+  }
+
+  function handleDrop(
+    event: React.DragEvent
+  ) {
+    event.preventDefault();
+
+    setIsDraggingFiles(
+      false
+    );
+
+    const files =
+      Array.from(
+        event.dataTransfer
+          .files
+      );
+
+    addFiles(files);
+  }
+
+  /* =========================================================
+     NEW CHAT
+  ========================================================== */
+
+  function newChat() {
     setConversationId(null);
     setMessages([]);
     setMessage("");
+    setAttachedFiles([]);
     setSearchStatus("idle");
-    setAutoScroll(true);
     setOpenMenuId(null);
-    setRenamingId(null);
-    setMobileSidebarOpen(false);
+    setRenameId(null);
+    setMobileOpen(false);
+    setAutoScroll(true);
 
     setTimeout(() => {
       textareaRef.current?.focus();
     }, 50);
   }
 
-  /* =======================================================
-     OPEN CHAT
-  ======================================================= */
+  /* =========================================================
+     OPEN CONVERSATION
+  ========================================================== */
 
   async function openConversation(
     id: string
@@ -342,20 +700,22 @@ export default function QuantumChat({
         await fetch(
           `/api/conversations/${id}`,
           {
-            method: "GET",
-            cache: "no-store",
+            cache:
+              "no-store",
           }
         );
 
       const data =
         await response
           .json()
-          .catch(() => null);
+          .catch(
+            () => null
+          );
 
       if (!response.ok) {
         throw new Error(
           data?.error ||
-            "Unable to load conversation."
+            "Failed to open conversation."
         );
       }
 
@@ -372,22 +732,21 @@ export default function QuantumChat({
       );
 
       setMessage("");
-      setAutoScroll(true);
-      setMobileSidebarOpen(
-        false
-      );
+      setAttachedFiles([]);
       setSearchStatus("idle");
+      setMobileOpen(false);
+      setAutoScroll(true);
     } catch (error) {
       console.error(
-        "Open conversation error:",
+        "OPEN CONVERSATION ERROR:",
         error
       );
     }
   }
 
-  /* =======================================================
+  /* =========================================================
      DELETE
-  ======================================================= */
+  ========================================================== */
 
   async function deleteConversation(
     id: string
@@ -397,19 +756,22 @@ export default function QuantumChat({
         await fetch(
           `/api/conversations/${id}`,
           {
-            method: "DELETE",
+            method:
+              "DELETE",
           }
         );
 
       const data =
         await response
           .json()
-          .catch(() => null);
+          .catch(
+            () => null
+          );
 
       if (!response.ok) {
         throw new Error(
           data?.error ||
-            "Delete failed."
+            "Failed to delete."
         );
       }
 
@@ -422,40 +784,41 @@ export default function QuantumChat({
       );
 
       if (
-        conversationId === id
+        conversationId ===
+        id
       ) {
-        startNewChat();
+        newChat();
       }
 
       setOpenMenuId(null);
     } catch (error) {
       console.error(
-        "Delete error:",
+        "DELETE ERROR:",
         error
       );
     }
   }
 
-  /* =======================================================
+  /* =========================================================
      RENAME
-  ======================================================= */
+  ========================================================== */
 
   function startRename(
     conversation: Conversation
   ) {
-    setRenameValue(
-      conversation.title
+    setRenameId(
+      conversation._id
     );
 
-    setRenamingId(
-      conversation._id
+    setRenameValue(
+      conversation.title
     );
 
     setOpenMenuId(null);
   }
 
   function cancelRename() {
-    setRenamingId(null);
+    setRenameId(null);
     setRenameValue("");
   }
 
@@ -465,8 +828,14 @@ export default function QuantumChat({
     const title =
       renameValue
         .trim()
-        .replace(/\s+/g, " ")
-        .slice(0, 80);
+        .replace(
+          /\s+/g,
+          " "
+        )
+        .slice(
+          0,
+          80
+        );
 
     if (!title) {
       return;
@@ -477,28 +846,28 @@ export default function QuantumChat({
         await fetch(
           `/api/conversations/${id}`,
           {
-            method: "PATCH",
+            method:
+              "PATCH",
 
             headers: {
               "Content-Type":
                 "application/json",
             },
 
-            body: JSON.stringify({
-              title,
-            }),
+            body:
+              JSON.stringify({
+                title,
+              }),
           }
         );
 
       const data =
-        await response
-          .json()
-          .catch(() => null);
+        await response.json();
 
       if (!response.ok) {
         throw new Error(
           data?.error ||
-            "Rename failed."
+            "Failed to rename."
         );
       }
 
@@ -520,332 +889,459 @@ export default function QuantumChat({
       cancelRename();
     } catch (error) {
       console.error(
-        "Rename error:",
+        "RENAME ERROR:",
         error
       );
     }
   }
 
-  /* =======================================================
-     SEND
-  ======================================================= */
+  /* =========================================================
+     SEND MESSAGE
+  ========================================================== */
 
   async function sendMessage() {
-  const text = message.trim();
+    const text =
+      message.trim();
 
-  if (!text || loading) {
-    return;
-  }
+    if (
+      !text ||
+      loading
+    ) {
+      return;
+    }
 
-  const streamId =
-    `stream-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2)}`;
+    const streamId =
+      `stream-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
 
-  const history =
-    messages
-      .filter(
-        (item) =>
-          item.role === "user" ||
-          item.role === "assistant"
-      )
-      .slice(-4);
+    const history =
+      messages
+        .filter(
+          (item) =>
+            item.role ===
+              "user" ||
+            item.role ===
+              "assistant"
+        )
+        .slice(-4);
 
-  setMessages((previous) => [
-    ...previous,
+    const filesToSend =
+      [...attachedFiles];
 
-    {
-      role: "user",
-      content: text,
-    },
+    setMessages(
+      (previous) => [
+        ...previous,
 
-    {
-      role: "assistant",
-      content: "",
-      sources: [],
-      research: [],
-      streamId,
-    },
-  ]);
+        {
+          role:
+            "user",
 
-  setMessage("");
-  setLoading(true);
-  setSearchStatus("thinking");
-  setAutoScroll(true);
+          content:
+            text,
 
-  try {
-    const response = await fetch(
-      "/api/chat",
-      {
-        method: "POST",
+          attachments:
+            filesToSend.map(
+              (file) => ({
+                name:
+                  file.name,
 
-        headers: {
-          "Content-Type":
-            "application/json",
+                size:
+                  file.size,
+
+                type:
+                  file.type,
+              })
+            ),
         },
 
-        body: JSON.stringify({
-          message: text,
-          conversationId,
-          history,
-        }),
-      }
+        {
+          role:
+            "assistant",
+
+          content:
+            "",
+
+          sources:
+            [],
+
+          research:
+            [],
+
+          streamId,
+        },
+      ]
     );
 
-    if (!response.ok) {
-      const data =
-        await response
-          .json()
-          .catch(() => null);
+    setMessage("");
+    setAttachedFiles([]);
+    setLoading(true);
+    setAutoScroll(true);
+    setSearchStatus(
+      filesToSend.length
+        ? "analyzing"
+        : "thinking"
+    );
 
-      throw new Error(
-        data?.error ||
-          `Quantum request failed (${response.status}).`
-      );
-    }
+    try {
+      const formData =
+        new FormData();
 
-    if (!response.body) {
-      throw new Error(
-        "Quantum returned no stream."
-      );
-    }
-
-    const reader =
-      response.body.getReader();
-
-    const decoder =
-      new TextDecoder();
-
-    let buffer = "";
-
-    while (true) {
-      const {
-        value,
-        done,
-      } = await reader.read();
-
-      if (done) {
-        break;
-      }
-
-      buffer += decoder.decode(
-        value,
-        {
-          stream: true,
-        }
+      formData.append(
+        "message",
+        text
       );
 
-      const events =
-        buffer.split("\n\n");
+      formData.append(
+        "conversationId",
+        conversationId ||
+          ""
+      );
 
-      buffer =
-        events.pop() || "";
+      formData.append(
+        "history",
+        JSON.stringify(
+          history
+        )
+      );
 
       for (
-        const event of events
+        const attached of filesToSend
       ) {
-        const dataLine =
-          event
-            .split("\n")
-            .find(
-              (line) =>
-                line.startsWith(
-                  "data:"
-                )
+        formData.append(
+          "files",
+          attached.file,
+          attached.name
+        );
+      }
+
+      const response =
+        await fetch(
+          "/api/chat",
+          {
+            method:
+              "POST",
+
+            body:
+              formData,
+          }
+        );
+
+      if (
+        !response.ok
+      ) {
+        const data =
+          await response
+            .json()
+            .catch(
+              () => null
             );
 
-        if (!dataLine) {
-          continue;
+        throw new Error(
+          data?.error ||
+            `Quantum request failed (${response.status}).`
+        );
+      }
+
+      if (
+        !response.body
+      ) {
+        throw new Error(
+          "Quantum returned no stream."
+        );
+      }
+
+      const reader =
+        response.body.getReader();
+
+      const decoder =
+        new TextDecoder();
+
+      let buffer = "";
+
+      while (true) {
+        const {
+          value,
+          done,
+        } =
+          await reader.read();
+
+        if (done) {
+          break;
         }
 
-        const payload =
-          dataLine
-            .replace(
-              /^data:\s*/,
-              ""
-            )
-            .trim();
-
-        if (!payload) {
-          continue;
-        }
-
-        let data: any;
-
-        try {
-          data =
-            JSON.parse(
-              payload
-            );
-        } catch {
-          continue;
-        }
-
-        if (
-          data.type === "status"
-        ) {
-          setSearchStatus(
-            data.status ||
-              "thinking"
+        buffer +=
+          decoder.decode(
+            value,
+            {
+              stream:
+                true,
+            }
           );
 
-          continue;
-        }
-
-        if (
-          data.type ===
-          "research"
-        ) {
-          setMessages(
-            (previous) =>
-              previous.map(
-                (item) =>
-                  item.streamId ===
-                  streamId
-                    ? {
-                        ...item,
-
-                        research:
-                          data.results ||
-                          [],
-                      }
-                    : item
-              )
+        const events =
+          buffer.split(
+            "\n\n"
           );
 
-          setSearchStatus(
-            "analyzing"
-          );
+        buffer =
+          events.pop() ||
+          "";
 
-          continue;
-        }
-
-        if (
-          data.type === "chunk"
+        for (
+          const event of events
         ) {
-          if (!data.text) {
+          const dataLine =
+            event
+              .split("\n")
+              .find(
+                (line) =>
+                  line.startsWith(
+                    "data:"
+                  )
+              );
+
+          if (
+            !dataLine
+          ) {
             continue;
           }
 
-          setMessages(
-            (previous) =>
-              previous.map(
-                (item) =>
-                  item.streamId ===
-                  streamId
-                    ? {
-                        ...item,
-
-                        content:
-                          item.content +
-                          data.text,
-                      }
-                    : item
+          const payload =
+            dataLine
+              .replace(
+                /^data:\s*/,
+                ""
               )
-          );
+              .trim();
 
-          setSearchStatus(
-            "analyzing"
-          );
+          if (
+            !payload
+          ) {
+            continue;
+          }
 
-          continue;
-        }
+          let data:
+            | any;
 
-        if (
-          data.type === "done"
-        ) {
-          setConversationId(
-            data.conversationId ||
-              null
-          );
+          try {
+            data =
+              JSON.parse(
+                payload
+              );
+          } catch {
+            continue;
+          }
 
-          setMessages(
-            (previous) =>
-              previous.map(
-                (item) =>
-                  item.streamId ===
-                  streamId
-                    ? {
-                        role:
-                          item.role,
+          /* STATUS */
 
-                        content:
-                          item.content,
+          if (
+            data.type ===
+            "status"
+          ) {
+            setSearchStatus(
+              data.status ||
+                "thinking"
+            );
 
-                        sources:
-                          data.sources ||
-                          item.sources ||
-                          [],
+            continue;
+          }
 
-                        research:
-                          item.research ||
-                          [],
-                      }
-                    : item
-              )
-          );
+          /* FILES */
 
-          setSearchStatus(
+          if (
+            data.type ===
+            "files"
+          ) {
+            setMessages(
+              (previous) =>
+                previous.map(
+                  (item) =>
+                    item.streamId ===
+                    streamId
+                      ? {
+                          ...item,
+
+                          fileResults:
+                            data.files ||
+                            [],
+
+                          fileErrors:
+                            data.errors ||
+                            [],
+                        }
+                      : item
+                )
+            );
+
+            continue;
+          }
+
+          /* RESEARCH */
+
+          if (
+            data.type ===
+            "research"
+          ) {
+            setMessages(
+              (previous) =>
+                previous.map(
+                  (item) =>
+                    item.streamId ===
+                    streamId
+                      ? {
+                          ...item,
+
+                          research:
+                            data.results ||
+                            [],
+                        }
+                      : item
+                )
+            );
+
+            setSearchStatus(
+              "analyzing"
+            );
+
+            continue;
+          }
+
+          /* TOKENS */
+
+          if (
+            data.type ===
+            "chunk"
+          ) {
+            if (
+              !data.text
+            ) {
+              continue;
+            }
+
+            setMessages(
+              (previous) =>
+                previous.map(
+                  (item) =>
+                    item.streamId ===
+                    streamId
+                      ? {
+                          ...item,
+
+                          content:
+                            item.content +
+                            data.text,
+                        }
+                      : item
+                )
+            );
+
+            setSearchStatus(
+              "analyzing"
+            );
+
+            continue;
+          }
+
+          /* DONE */
+
+          if (
+            data.type ===
             "done"
-          );
+          ) {
+            setConversationId(
+              data.conversationId ||
+                null
+            );
 
-          await loadConversations();
+            setSearchStatus(
+              "done"
+            );
 
-          continue;
-        }
+            setMessages(
+              (previous) =>
+                previous.map(
+                  (item) =>
+                    item.streamId ===
+                    streamId
+                      ? {
+                          ...item,
 
-        if (
-          data.type === "error"
-        ) {
-          throw new Error(
-            data.error ||
-              "Quantum failed."
-          );
+                          sources:
+                            data.sources ||
+                            item.sources ||
+                            [],
+
+                          fileResults:
+                            data.files ||
+                            item.fileResults ||
+                            [],
+                        }
+                      : item
+                )
+            );
+
+            await loadConversations();
+
+            continue;
+          }
+
+          /* ERROR */
+
+          if (
+            data.type ===
+            "error"
+          ) {
+            throw new Error(
+              data.error ||
+                "Quantum failed."
+            );
+          }
         }
       }
+    } catch (error) {
+      console.error(
+        "QUANTUM SEND ERROR:",
+        error
+      );
+
+      const message =
+        error instanceof
+        Error
+          ? error.message
+          : "Something went wrong.";
+
+      setMessages(
+        (previous) =>
+          previous.map(
+            (item) =>
+              item.streamId ===
+              streamId
+                ? {
+                    ...item,
+
+                    content:
+                      `**Quantum error**\n\n${message}`,
+                  }
+                : item
+          )
+      );
+
+      setSearchStatus(
+        "error"
+      );
+    } finally {
+      setLoading(false);
+
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 50);
     }
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error
-        ? error.message
-        : "Something went wrong.";
-
-    console.error(
-      "Quantum client error:",
-      error
-    );
-
-    setMessages(
-      (previous) =>
-        previous.map(
-          (item) =>
-            item.streamId ===
-            streamId
-              ? {
-                  ...item,
-
-                  content:
-                    `**Quantum error**\n\n${errorMessage}`,
-                }
-              : item
-        )
-    );
-
-    setSearchStatus(
-      "error"
-    );
-  } finally {
-    setLoading(false);
-
-    setTimeout(() => {
-      textareaRef.current?.focus();
-    }, 50);
   }
-}
 
-  /* =======================================================
+  /* =========================================================
      KEYBOARD
-  ======================================================= */
+  ========================================================== */
 
   function handleKeyDown(
     event: React.KeyboardEvent<HTMLTextAreaElement>
@@ -861,9 +1357,9 @@ export default function QuantumChat({
     }
   }
 
-  /* =======================================================
+  /* =========================================================
      COPY
-  ======================================================= */
+  ========================================================== */
 
   async function copyAnswer(
     content: string,
@@ -874,7 +1370,9 @@ export default function QuantumChat({
         content
       );
 
-      setCopiedMessage(index);
+      setCopiedMessage(
+        index
+      );
 
       setTimeout(() => {
         setCopiedMessage(null);
@@ -899,6 +1397,10 @@ export default function QuantumChat({
     } catch {}
   }
 
+  /* =========================================================
+     FILTER
+  ========================================================== */
+
   const filteredConversations =
     conversations.filter(
       (item) =>
@@ -911,9 +1413,9 @@ export default function QuantumChat({
           )
     );
 
-  /* =======================================================
+  /* =========================================================
      RENDER
-  ======================================================= */
+  ========================================================== */
 
   return (
     <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-[#020617] text-white">
@@ -928,8 +1430,7 @@ export default function QuantumChat({
         <div
           className="absolute inset-0 opacity-[0.14]"
           style={{
-            backgroundImage:
-              `
+            backgroundImage: `
               linear-gradient(
                 rgba(255,255,255,0.025) 1px,
                 transparent 1px
@@ -949,16 +1450,16 @@ export default function QuantumChat({
 
       {/* MOBILE OVERLAY */}
 
-      {mobileSidebarOpen && (
+      {mobileOpen && (
         <button
           type="button"
-          aria-label="Close sidebar"
           onClick={() =>
-            setMobileSidebarOpen(
+            setMobileOpen(
               false
             )
           }
           className="absolute inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+          aria-label="Close sidebar"
         />
       )}
 
@@ -967,10 +1468,7 @@ export default function QuantumChat({
       <aside
         className={`
           absolute inset-y-0 left-0 z-50
-          flex
-          w-[280px]
-          min-w-[280px]
-          flex-col
+          w-[280px] min-w-[280px]
           border-r border-white/[0.07]
           bg-[#030712]/97
           backdrop-blur-2xl
@@ -979,15 +1477,15 @@ export default function QuantumChat({
           lg:z-20
 
           ${
-            mobileSidebarOpen
+            mobileOpen
               ? "translate-x-0"
-              : "-translate-x-full"
+              : "-translate-x-full lg:translate-x-0"
           }
 
           ${
-            desktopSidebarCollapsed
+            desktopCollapsed
               ? "lg:w-0 lg:min-w-0 lg:overflow-hidden lg:border-r-0"
-              : "lg:translate-x-0"
+              : ""
           }
         `}
       >
@@ -1013,7 +1511,7 @@ export default function QuantumChat({
             <button
               type="button"
               onClick={() =>
-                setDesktopSidebarCollapsed(
+                setDesktopCollapsed(
                   true
                 )
               }
@@ -1026,24 +1524,24 @@ export default function QuantumChat({
             <button
               type="button"
               onClick={() =>
-                setMobileSidebarOpen(
+                setMobileOpen(
                   false
                 )
               }
-              className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 hover:bg-white/[0.05] hover:text-slate-300 lg:hidden"
+              className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 hover:text-slate-300 lg:hidden"
               aria-label="Close sidebar"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
 
-          {/* NEW */}
+          {/* NEW CHAT */}
 
           <div className="shrink-0 px-4">
             <button
               type="button"
-              onClick={startNewChat}
-              className="group flex w-full items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.035] px-4 py-3 text-sm text-slate-300 hover:border-cyan-300/20 hover:bg-white/[0.055]"
+              onClick={newChat}
+              className="group flex w-full items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.035] px-4 py-3 text-sm text-slate-300 transition hover:border-cyan-300/20 hover:bg-white/[0.055]"
             >
               <Plus className="h-4 w-4 text-cyan-300 group-hover:scale-110" />
 
@@ -1051,7 +1549,7 @@ export default function QuantumChat({
             </button>
           </div>
 
-          {/* SEARCH */}
+          {/* SEARCH CHATS */}
 
           <div className="shrink-0 px-4 pt-5">
             <div className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5">
@@ -1075,10 +1573,10 @@ export default function QuantumChat({
             </div>
           </div>
 
-          {/* HISTORY */}
+          {/* CHAT HISTORY */}
 
           <div className="quantum-scroll mt-7 min-h-0 flex-1 overflow-y-auto px-3">
-            <div className="mb-3 flex items-center gap-2 px-2 text-[10px] uppercase tracking-[0.18em] text-slate-600">
+            <div className="mb-3 flex items-center gap-2 px-2 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-600">
               <History className="h-3.5 w-3.5" />
 
               Recent
@@ -1097,12 +1595,12 @@ export default function QuantumChat({
                   (
                     conversation
                   ) => {
-                    const open =
+                    const menuOpen =
                       openMenuId ===
                       conversation._id;
 
                     const renaming =
-                      renamingId ===
+                      renameId ===
                       conversation._id;
 
                     return (
@@ -1114,6 +1612,7 @@ export default function QuantumChat({
                       >
                         {renaming ? (
                           <form
+                            className="flex w-full items-center gap-1 px-2 py-1.5"
                             onSubmit={(
                               event
                             ) => {
@@ -1123,7 +1622,6 @@ export default function QuantumChat({
                                 conversation._id
                               );
                             }}
-                            className="flex w-full items-center gap-1 px-2 py-1.5"
                           >
                             <input
                               autoFocus
@@ -1134,8 +1632,7 @@ export default function QuantumChat({
                                 event
                               ) =>
                                 setRenameValue(
-                                  event
-                                    .target
+                                  event.target
                                     .value
                                 )
                               }
@@ -1168,7 +1665,12 @@ export default function QuantumChat({
                                   conversation._id
                                 )
                               }
-                              className="min-w-0 flex-1 truncate px-3 py-2.5 text-left text-sm text-slate-500 hover:text-slate-300"
+                              className={`min-w-0 flex-1 truncate px-3 py-2.5 text-left text-sm ${
+                                conversationId ===
+                                conversation._id
+                                  ? "text-slate-200"
+                                  : "text-slate-500"
+                              }`}
                             >
                               {
                                 conversation.title
@@ -1177,11 +1679,6 @@ export default function QuantumChat({
 
                             <button
                               type="button"
-                              onPointerDown={(
-                                event
-                              ) =>
-                                event.stopPropagation()
-                              }
                               onClick={(
                                 event
                               ) => {
@@ -1198,7 +1695,7 @@ export default function QuantumChat({
                                 );
                               }}
                               className={`mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-                                open
+                                menuOpen
                                   ? "bg-white/[0.08] text-slate-200"
                                   : "text-slate-700 hover:bg-white/[0.06] hover:text-slate-300"
                               }`}
@@ -1207,15 +1704,8 @@ export default function QuantumChat({
                               <MoreHorizontal className="h-4 w-4" />
                             </button>
 
-                            {open && (
-                              <div
-                                onPointerDown={(
-                                  event
-                                ) =>
-                                  event.stopPropagation()
-                                }
-                                className="absolute right-2 top-[45px] z-[999] w-40 overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0a0f1d] p-1 shadow-2xl shadow-black/60"
-                              >
+                            {menuOpen && (
+                              <div className="absolute right-2 top-[45px] z-[999] w-40 overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0a0f1d] p-1 shadow-2xl">
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -1254,14 +1744,14 @@ export default function QuantumChat({
           {/* SETTINGS */}
 
           <div className="shrink-0 border-t border-white/[0.06] p-4">
-            <a
-  href="/settings"
-  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-white/[0.035] hover:text-slate-300"
->
-  <Settings className="h-4 w-4" />
+            <Link
+              href="/settings"
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 hover:bg-white/[0.035] hover:text-slate-300"
+            >
+              <Settings className="h-4 w-4" />
 
-  Settings
-</a>
+              Settings
+            </Link>
           </div>
         </div>
       </aside>
@@ -1270,18 +1760,15 @@ export default function QuantumChat({
 
       <section className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 
-        {/* TOP BAR */}
+        {/* HEADER */}
 
         <header className="flex h-[70px] shrink-0 items-center justify-between border-b border-white/[0.05] bg-black/10 px-4 backdrop-blur-2xl sm:px-6">
 
           <div className="flex items-center gap-3">
-
-            {/* MOBILE */}
-
             <button
               type="button"
               onClick={() =>
-                setMobileSidebarOpen(
+                setMobileOpen(
                   true
                 )
               }
@@ -1291,17 +1778,15 @@ export default function QuantumChat({
               <Menu className="h-4 w-4" />
             </button>
 
-            {/* DESKTOP */}
-
-            {desktopSidebarCollapsed && (
+            {desktopCollapsed && (
               <button
                 type="button"
                 onClick={() =>
-                  setDesktopSidebarCollapsed(
+                  setDesktopCollapsed(
                     false
                   )
                 }
-                className="hidden h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-slate-500 hover:border-cyan-300/15 hover:text-cyan-300 lg:flex"
+                className="hidden h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-slate-500 hover:text-cyan-300 lg:flex"
                 aria-label="Open sidebar"
               >
                 <PanelLeftOpen className="h-4 w-4" />
@@ -1323,28 +1808,24 @@ export default function QuantumChat({
             </div>
           </div>
 
-          <div>
-            <div className="flex items-center gap-3">
-  <div className="hidden items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.025] px-3 py-1.5 text-[9px] tracking-[0.15em] text-slate-700 sm:flex">
-    <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
+          <div className="flex items-center gap-3">
+            <div className="hidden items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.025] px-3 py-1.5 text-[9px] tracking-[0.15em] text-slate-700 sm:flex">
+              <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
+              LIVE
+            </div>
 
-    LIVE
-  </div>
-
-  <UserButton
-    showName={false}
-    appearance={{
-      elements: {
-        avatarBox:
-          "h-8 w-8 border border-cyan-300/15 shadow-[0_0_20px_rgba(34,211,238,0.08)]",
-      },
-    }}
-  />
-</div>
+            <UserButton
+              appearance={{
+                elements: {
+                  avatarBox:
+                    "h-8 w-8 border border-cyan-300/15",
+                },
+              }}
+            />
           </div>
         </header>
 
-        {/* CHAT */}
+        {/* CHAT AREA */}
 
         <div
           ref={
@@ -1353,7 +1834,7 @@ export default function QuantumChat({
           onScroll={
             handleMessageScroll
           }
-          className="quantum-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-smooth"
+          className="quantum-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain"
         >
           {messages.length ===
           0 ? (
@@ -1368,7 +1849,6 @@ export default function QuantumChat({
           ) : (
             <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
               <div className="space-y-10 pb-10">
-
                 {messages.map(
                   (
                     item,
@@ -1390,6 +1870,12 @@ export default function QuantumChat({
                       copyCode={
                         copyCode
                       }
+                      showSources={
+                        effectiveSettings.showSources
+                      }
+                      showResearch={
+                        effectiveSettings.showResearch
+                      }
                     />
                   )
                 )}
@@ -1398,7 +1884,6 @@ export default function QuantumChat({
                   ref={
                     bottomRef
                   }
-                  className="h-4"
                 />
               </div>
             </div>
@@ -1410,9 +1895,100 @@ export default function QuantumChat({
         <div className="shrink-0 border-t border-white/[0.05] bg-[#020617]/90 px-4 pb-4 pt-3 backdrop-blur-2xl sm:px-6">
           <div className="mx-auto w-full max-w-3xl">
 
-            <div className="relative overflow-hidden rounded-[24px] border border-white/[0.10] bg-white/[0.035] p-2 shadow-[0_0_70px_rgba(34,211,238,0.025)] backdrop-blur-2xl focus-within:border-cyan-300/20 focus-within:shadow-[0_0_90px_rgba(34,211,238,0.07)]">
+            <div
+              onDragEnter={
+                handleDragEnter
+              }
+              onDragOver={
+                handleDragOver
+              }
+              onDragLeave={
+                handleDragLeave
+              }
+              onDrop={
+                handleDrop
+              }
+              className={`relative overflow-hidden rounded-[24px] border p-2 backdrop-blur-2xl transition-all ${
+                isDraggingFiles
+                  ? "border-cyan-300/40 bg-cyan-300/[0.06] shadow-[0_0_60px_rgba(34,211,238,0.10)]"
+                  : "border-white/[0.10] bg-white/[0.035] focus-within:border-cyan-300/20"
+              }`}
+            >
+
+              {/* DRAG OVERLAY */}
+
+              {isDraggingFiles && (
+                <div className="absolute inset-0 z-30 flex items-center justify-center rounded-[24px] border border-dashed border-cyan-300/40 bg-[#04111c]/95 backdrop-blur-xl">
+                  <div className="text-center">
+                    <FileText className="mx-auto mb-3 h-8 w-8 text-cyan-300" />
+
+                    <p className="text-sm font-medium text-cyan-200">
+                      Drop files here
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-600">
+                      PDF · DOCX · TXT · MD · CSV · JSON
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* TOP GLOW */}
 
               <div className="pointer-events-none absolute left-1/2 top-0 h-px w-2/3 -translate-x-1/2 bg-gradient-to-r from-transparent via-cyan-300/40 to-transparent" />
+
+              {/* FILE CHIPS */}
+
+              {attachedFiles.length >
+                0 && (
+                <div className="mb-2 flex flex-wrap gap-2 px-2 pt-1">
+                  {attachedFiles.map(
+                    (
+                      item
+                    ) => (
+                      <div
+                        key={
+                          item.id
+                        }
+                        className="group flex max-w-[280px] items-center gap-2 rounded-xl border border-cyan-300/10 bg-cyan-300/[0.035] px-3 py-2"
+                      >
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-cyan-300/[0.06]">
+                          <FileText className="h-3.5 w-3.5 text-cyan-300" />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs text-slate-300">
+                            {
+                              item.name
+                            }
+                          </p>
+
+                          <p className="text-[9px] text-slate-700">
+                            {formatFileSize(
+                              item.size
+                            )}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            removeFile(
+                              item.id
+                            )
+                          }
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-700 transition hover:bg-white/[0.05] hover:text-slate-300"
+                          aria-label={`Remove ${item.name}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
+
+              {/* TEXTAREA */}
 
               <textarea
                 ref={
@@ -1432,17 +2008,77 @@ export default function QuantumChat({
                 onKeyDown={
                   handleKeyDown
                 }
+                onPaste={
+                  handleComposerPaste
+                }
                 disabled={
                   loading
                 }
                 rows={1}
-                placeholder="Ask Quantum anything..."
+                placeholder={
+                  attachedFiles.length
+                    ? "Ask Quantum about your files..."
+                    : "Ask Quantum anything..."
+                }
                 className="min-h-[48px] max-h-[140px] w-full resize-none overflow-y-auto bg-transparent px-4 py-3 text-[15px] leading-6 text-slate-200 outline-none placeholder:text-slate-600"
               />
 
+              {/* TOOLBAR */}
+
               <div className="flex items-center justify-between px-2 pb-1 pt-1">
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      fileInputRef.current?.click()
+                    }
+                    disabled={
+                      loading
+                    }
+                    className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-600 transition hover:bg-white/[0.05] hover:text-cyan-300 disabled:opacity-40"
+                    title="Attach files"
+                    aria-label="Attach files"
+                  >
+                    <Paperclip className="h-4 w-4" />
+                  </button>
+
+                  <input
+                    ref={
+                      fileInputRef
+                    }
+                    type="file"
+                    multiple
+                    accept="
+                      .txt,
+                      .md,
+                      .markdown,
+                      .csv,
+                      .json,
+                      .pdf,
+                      .docx
+                    "
+                    className="hidden"
+                    onChange={(
+                      event
+                    ) => {
+                      const files =
+                        Array.from(
+                          event
+                            .target
+                            .files ||
+                            []
+                        );
+
+                      addFiles(
+                        files
+                      );
+
+                      event.target.value =
+                        "";
+                    }}
+                  />
+
                   <div className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/10 bg-cyan-300/[0.025] px-3 py-2 text-[11px] text-slate-500">
                     <Globe2 className="h-3.5 w-3.5 text-cyan-300" />
                     Live web
@@ -1450,15 +2086,15 @@ export default function QuantumChat({
 
                   {searchStatus ===
                     "searching" && (
-                    <span className="text-[10px] text-cyan-300/70">
+                    <span className="ml-2 text-[10px] text-cyan-300/70">
                       Searching...
                     </span>
                   )}
 
                   {searchStatus ===
                     "analyzing" && (
-                    <span className="text-[10px] text-violet-300/70">
-                      Synthesizing...
+                    <span className="ml-2 text-[10px] text-violet-300/70">
+                      Analyzing...
                     </span>
                   )}
                 </div>
@@ -1515,7 +2151,7 @@ function EmptyState({
         <div className="relative mb-8 flex h-16 w-16 items-center justify-center">
           <div className="absolute inset-0 rounded-full bg-cyan-400/10 blur-2xl" />
 
-          <div className="absolute h-16 w-16 rounded-full border border-cyan-300/15 animate-[spin_12s_linear_infinite]" />
+          <div className="absolute h-16 w-16 animate-[spin_12s_linear_infinite] rounded-full border border-cyan-300/15" />
 
           <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.10] to-violet-500/[0.10]">
             <Sparkles className="h-6 w-6 text-cyan-200" />
@@ -1527,16 +2163,16 @@ function EmptyState({
         </p>
 
         <h1 className="mt-2 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-          What next,{" "}
+          What's next,{" "}
           <span className="bg-gradient-to-r from-cyan-300 via-sky-300 to-violet-400 bg-clip-text text-transparent">
             {firstName}?
           </span>
         </h1>
 
         <p className="mt-5 max-w-2xl text-base leading-7 text-slate-500">
-          Search the live web, read pages, explore
-          complex questions, and get beautifully
-          structured answers.
+          Search the live web, read pages, attach
+          documents, and explore complex questions in
+          one intelligent workspace.
         </p>
 
         <div className="mt-9 grid gap-3 sm:grid-cols-2">
@@ -1551,7 +2187,17 @@ function EmptyState({
           />
 
           <PromptCard
-            label="ANALYSIS"
+            label="FILE ANALYSIS"
+            text="Attach a document and ask Quantum to analyze it."
+            onClick={() =>
+              setMessage(
+                "Analyze the attached file and summarize its most important points."
+              )
+            }
+          />
+
+          <PromptCard
+            label="WEB ANALYSIS"
             text="Compare Next.js and Remix."
             onClick={() =>
               setMessage(
@@ -1562,20 +2208,10 @@ function EmptyState({
 
           <PromptCard
             label="PAGE READING"
-            text="Read and explain this web page."
+            text="Read and explain a web page."
             onClick={() =>
               setMessage(
                 "Read and explain https://nextjs.org/docs"
-              )
-            }
-          />
-
-          <PromptCard
-            label="RESEARCH"
-            text="Research the best backend frameworks for startups."
-            onClick={() =>
-              setMessage(
-                "Research the best backend frameworks for startups."
               )
             }
           />
@@ -1586,7 +2222,7 @@ function EmptyState({
 }
 
 /* =========================================================
-   PROMPTS
+   PROMPT CARD
 ========================================================= */
 
 function PromptCard({
@@ -1630,6 +2266,8 @@ function MessageBubble({
   copiedCode,
   copyAnswer,
   copyCode,
+  showSources,
+  showResearch,
 }: {
   item: Message;
 
@@ -1652,23 +2290,53 @@ function MessageBubble({
     code: string,
     codeId: string
   ) => void;
+
+  showSources: boolean;
+
+  showResearch: boolean;
 }) {
+  /* USER */
+
   if (
     item.role ===
     "user"
   ) {
     return (
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end">
         <div className="max-w-[82%] rounded-2xl rounded-br-md bg-white/[0.07] px-5 py-3.5 text-[15px] leading-7 text-slate-200">
           {item.content}
         </div>
+
+        {item.attachments &&
+          item.attachments.length >
+            0 && (
+            <div className="mt-3 flex max-w-[82%] flex-wrap justify-end gap-2">
+              {item.attachments.map(
+                (file) => (
+                  <div
+                    key={`${file.name}-${file.size}`}
+                    className="flex items-center gap-2 rounded-xl border border-cyan-300/10 bg-cyan-300/[0.035] px-3 py-2"
+                  >
+                    <FileText className="h-3.5 w-3.5 text-cyan-300" />
+
+                    <span className="max-w-[180px] truncate text-[10px] text-slate-500">
+                      {
+                        file.name
+                      }
+                    </span>
+                  </div>
+                )
+              )}
+            </div>
+          )}
       </div>
     );
   }
 
   return (
-    <article>
-      {/* QUANTUM */}
+    <article className="w-full">
+
+      {/* QUANTUM HEADER */}
 
       <div className="mb-4 flex items-center gap-2">
         <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-300/15 bg-cyan-300/[0.07]">
@@ -1686,9 +2354,86 @@ function MessageBubble({
         </div>
       </div>
 
+      {/* FILE RESULTS */}
+
+      {item.fileResults &&
+        item.fileResults.length >
+          0 && (
+          <div className="mb-4 rounded-2xl border border-violet-300/10 bg-violet-300/[0.025]">
+            <div className="flex items-center gap-2 border-b border-white/[0.05] px-4 py-3">
+              <FileText className="h-4 w-4 text-violet-300" />
+
+              <span className="text-xs font-medium text-violet-200">
+                Files analyzed
+              </span>
+            </div>
+
+            <div className="flex flex-wrap gap-2 p-3">
+              {item.fileResults.map(
+                (file) => (
+                  <div
+                    key={
+                      file.name
+                    }
+                    className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-black/20 px-3 py-2"
+                  >
+                    <FileText className="h-3.5 w-3.5 text-violet-300/70" />
+
+                    <span className="max-w-[220px] truncate text-[10px] text-slate-500">
+                      {
+                        file.name
+                      }
+                    </span>
+
+                    {file.truncated && (
+                      <span className="text-[9px] text-amber-300/60">
+                        truncated
+                      </span>
+                    )}
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        )}
+
+      {/* FILE ERRORS */}
+
+      {item.fileErrors &&
+        item.fileErrors.length >
+          0 && (
+          <div className="mb-4 rounded-2xl border border-amber-300/10 bg-amber-300/[0.025] p-4">
+            <p className="text-xs font-medium text-amber-200">
+              Some files could not be read
+            </p>
+
+            <div className="mt-2 space-y-1">
+              {item.fileErrors.map(
+                (error) => (
+                  <p
+                    key={
+                      error.name
+                    }
+                    className="text-[10px] text-slate-600"
+                  >
+                    {
+                      error.name
+                    }{" "}
+                    —{" "}
+                    {
+                      error.error
+                    }
+                  </p>
+                )
+              )}
+            </div>
+          </div>
+        )}
+
       {/* RESEARCH */}
 
-      {item.research &&
+      {showResearch &&
+        item.research &&
         item.research.length >
           0 && (
           <ResearchPanel
@@ -1698,11 +2443,9 @@ function MessageBubble({
           />
         )}
 
-      {/* ANSWER CARD */}
+      {/* ANSWER */}
 
       <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.025] shadow-[0_20px_70px_rgba(0,0,0,0.16)]">
-
-        {/* HEADER */}
 
         <div className="flex items-center justify-between border-b border-white/[0.06] bg-white/[0.018] px-5 py-3">
           <div className="flex items-center gap-2">
@@ -1740,8 +2483,6 @@ function MessageBubble({
           )}
         </div>
 
-        {/* BODY */}
-
         <div className="p-5 sm:p-6">
           {item.content ? (
             <FormattedAnswer
@@ -1763,7 +2504,8 @@ function MessageBubble({
 
       {/* SOURCES */}
 
-      {item.sources &&
+      {showSources &&
+        item.sources &&
         item.sources.length >
           0 && (
           <div className="mt-7">
@@ -1790,7 +2532,7 @@ function MessageBubble({
                     rel="noopener noreferrer"
                     className="group flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.018] p-3 hover:border-cyan-300/15 hover:bg-white/[0.035]"
                   >
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-300/[0.04]">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-300/[0.04]">
                       <Globe2 className="h-3.5 w-3.5 text-cyan-300/70" />
                     </div>
 
@@ -1820,7 +2562,7 @@ function MessageBubble({
 }
 
 /* =========================================================
-   RESEARCH
+   RESEARCH PANEL
 ========================================================= */
 
 function ResearchPanel({
@@ -1834,7 +2576,6 @@ function ResearchPanel({
 
   return (
     <div className="mb-5 overflow-hidden rounded-2xl border border-cyan-300/[0.10] bg-cyan-300/[0.025]">
-
       <div className="flex items-center justify-between border-b border-white/[0.05] px-4 py-3">
         <div className="flex items-center gap-2">
           <Globe2 className="h-4 w-4 text-cyan-300" />
@@ -1845,13 +2586,15 @@ function ResearchPanel({
             </p>
 
             <p className="text-[10px] text-slate-700">
-              Sources used by Quantum
+              Sources found by Quantum
             </p>
           </div>
         </div>
 
         <span className="rounded-full border border-white/[0.06] px-2.5 py-1 text-[10px] text-slate-600">
-          {results.length}
+          {
+            results.length
+          }
         </span>
       </div>
 
@@ -1924,7 +2667,7 @@ function FormattedAnswer({
 
   copyCode: (
     code: string,
-    codeId: string
+    id: string
   ) => void;
 }) {
   return (
@@ -1934,15 +2677,19 @@ function FormattedAnswer({
           remarkGfm,
         ]}
         components={{
-          h1({ children }) {
+          h1({
+            children,
+          }) {
             return (
-              <h1 className="mb-5 mt-0 text-2xl font-bold leading-tight tracking-tight text-white sm:text-3xl">
+              <h1 className="mb-5 mt-0 text-2xl font-bold tracking-tight text-white sm:text-3xl">
                 {children}
               </h1>
             );
           },
 
-          h2({ children }) {
+          h2({
+            children,
+          }) {
             return (
               <h2 className="mb-3 mt-8 text-xl font-bold text-white sm:text-2xl">
                 {children}
@@ -1950,7 +2697,9 @@ function FormattedAnswer({
             );
           },
 
-          h3({ children }) {
+          h3({
+            children,
+          }) {
             return (
               <h3 className="mb-2 mt-6 text-base font-semibold text-slate-100 sm:text-lg">
                 {children}
@@ -1958,7 +2707,9 @@ function FormattedAnswer({
             );
           },
 
-          p({ children }) {
+          p({
+            children,
+          }) {
             return (
               <p className="mb-5 max-w-[72ch] leading-7 text-slate-300">
                 {children}
@@ -1966,7 +2717,9 @@ function FormattedAnswer({
             );
           },
 
-          strong({ children }) {
+          strong({
+            children,
+          }) {
             return (
               <strong className="font-semibold text-white">
                 {children}
@@ -1974,7 +2727,9 @@ function FormattedAnswer({
             );
           },
 
-          ul({ children }) {
+          ul({
+            children,
+          }) {
             return (
               <ul className="mb-5 space-y-2 pl-6 marker:text-cyan-300">
                 {children}
@@ -1982,7 +2737,9 @@ function FormattedAnswer({
             );
           },
 
-          ol({ children }) {
+          ol({
+            children,
+          }) {
             return (
               <ol className="mb-5 space-y-2 pl-6 marker:text-cyan-300">
                 {children}
@@ -1990,7 +2747,9 @@ function FormattedAnswer({
             );
           },
 
-          li({ children }) {
+          li({
+            children,
+          }) {
             return (
               <li className="pl-1">
                 {children}
@@ -1998,7 +2757,9 @@ function FormattedAnswer({
             );
           },
 
-          blockquote({ children }) {
+          blockquote({
+            children,
+          }) {
             return (
               <blockquote className="my-6 rounded-r-xl border-l-2 border-cyan-300/30 bg-cyan-300/[0.025] px-5 py-4 text-slate-400">
                 {children}
@@ -2022,7 +2783,9 @@ function FormattedAnswer({
             );
           },
 
-          table({ children }) {
+          table({
+            children,
+          }) {
             return (
               <div className="quantum-scroll my-7 overflow-x-auto rounded-xl border border-white/[0.08]">
                 <table className="min-w-[650px] w-full border-collapse">
@@ -2032,7 +2795,9 @@ function FormattedAnswer({
             );
           },
 
-          thead({ children }) {
+          thead({
+            children,
+          }) {
             return (
               <thead className="bg-white/[0.045]">
                 {children}
@@ -2040,7 +2805,9 @@ function FormattedAnswer({
             );
           },
 
-          th({ children }) {
+          th({
+            children,
+          }) {
             return (
               <th className="border border-white/[0.07] px-4 py-3 text-left text-xs font-semibold text-white">
                 {children}
@@ -2048,7 +2815,9 @@ function FormattedAnswer({
             );
           },
 
-          td({ children }) {
+          td({
+            children,
+          }) {
             return (
               <td className="border border-white/[0.06] px-4 py-3 text-sm text-slate-400">
                 {children}
@@ -2056,7 +2825,9 @@ function FormattedAnswer({
             );
           },
 
-          pre({ children }) {
+          pre({
+            children,
+          }) {
             const child =
               children as React.ReactElement<{
                 className?: string;
@@ -2064,7 +2835,9 @@ function FormattedAnswer({
               }>;
 
             const className =
-              child?.props?.className ||
+              child
+                ?.props
+                ?.className ||
               "";
 
             const match =
@@ -2078,7 +2851,8 @@ function FormattedAnswer({
 
             const code =
               String(
-                child?.props
+                child
+                  ?.props
                   ?.children ||
                   ""
               ).replace(
@@ -2086,7 +2860,7 @@ function FormattedAnswer({
                 ""
               );
 
-            const codeId =
+            const id =
               `${language}-${code.slice(
                 0,
                 40
@@ -2095,30 +2869,22 @@ function FormattedAnswer({
             return (
               <div className="my-7 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#030712]">
                 <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full bg-red-400/60" />
-
-                    <span className="h-2.5 w-2.5 rounded-full bg-yellow-400/60" />
-
-                    <span className="h-2.5 w-2.5 rounded-full bg-green-400/60" />
-
-                    <span className="ml-2 text-[10px] uppercase tracking-[0.15em] text-slate-600">
-                      {language}
-                    </span>
-                  </div>
+                  <span className="text-[10px] uppercase tracking-[0.15em] text-slate-600">
+                    {language}
+                  </span>
 
                   <button
                     type="button"
                     onClick={() =>
                       void copyCode(
                         code,
-                        codeId
+                        id
                       )
                     }
                     className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-600 hover:bg-white/[0.05] hover:text-slate-300"
                   >
                     {copiedCode ===
-                    codeId ? (
+                    id ? (
                       <>
                         <Check className="h-3 w-3" />
                         Copied
@@ -2143,7 +2909,9 @@ function FormattedAnswer({
             );
           },
 
-          code({ children }) {
+          code({
+            children,
+          }) {
             return (
               <code className="rounded-md border border-cyan-300/10 bg-cyan-300/[0.05] px-1.5 py-0.5 font-mono text-[0.9em] text-cyan-300">
                 {children}
@@ -2165,7 +2933,7 @@ function FormattedAnswer({
 }
 
 /* =========================================================
-   STATUS
+   SEARCH PROGRESS
 ========================================================= */
 
 function SearchProgress() {
@@ -2173,16 +2941,18 @@ function SearchProgress() {
     <div className="flex items-center gap-3 text-sm text-slate-600">
       <div className="flex gap-1">
         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-300 [animation-delay:-0.3s]" />
-
         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-300 [animation-delay:-0.15s]" />
-
         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-300" />
       </div>
 
-      Quantum is thinking...
+      Just a second...
     </div>
-  );
+  );``
 }
+
+/* =========================================================
+   HOSTNAME
+========================================================= */
 
 function getHostname(
   url: string

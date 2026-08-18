@@ -1,17 +1,33 @@
-import { NextRequest } from "next/server";
-import { ObjectId } from "mongodb";
-import { auth } from "@clerk/nextjs/server";
+import {
+  NextRequest,
+} from "next/server";
 
-import { groq, QUANTUM_MODEL } from "@/lib/groq";
+import {
+  ObjectId,
+} from "mongodb";
+
+import {
+  auth,
+} from "@clerk/nextjs/server";
+
+import {
+  groq,
+  QUANTUM_MODEL,
+} from "@/lib/groq";
+
 import clientPromise from "@/lib/mongodb";
 
-import { researchWeb } from "@/lib/web-research";
-import { shouldSearch } from "@/lib/search-decision";
+import {
+  researchWeb,
+} from "@/lib/web-research";
+
+import {
+  shouldSearch,
+} from "@/lib/search-decision";
 
 import {
   DEFAULT_QUANTUM_SETTINGS,
   sanitizeQuantumSettings,
-  type QuantumSettings,
 } from "@/lib/quantum-settings";
 
 import {
@@ -22,58 +38,97 @@ import {
   generateConversationTitle,
 } from "@/lib/generate-title";
 
+import {
+  buildFileContext,
+  extractFile,
+  ExtractedFile,
+  MAX_FILES_PER_REQUEST,
+} from "@/lib/file-extractor";
+
 export const runtime = "nodejs";
 
+/* =========================================================
+   TYPES
+========================================================= */
+
 interface ClientMessage {
-  role: "user" | "assistant";
+  role:
+    | "user"
+    | "assistant";
+
   content: string;
 }
 
+/* =========================================================
+   LIMITS
+========================================================= */
+
 const MAX_HISTORY_MESSAGES = 4;
+
 const MAX_HISTORY_CHARS = 1400;
 
-const MAX_RESEARCH_RESULTS = 5;
+const MAX_RESEARCH_RESULTS = 3;
+
 const MAX_RESEARCH_CHARS = 700;
-const MAX_PAGE_CHARS = 5000;
+
+const MAX_PAGE_CHARS = 4000;
 
 /* =========================================================
-   HEALTH CHECK
+   GET HEALTH CHECK
 ========================================================= */
 
 export async function GET() {
   return Response.json({
     ok: true,
-    service: "Quantum Chat API",
-    methods: ["GET", "POST"],
-    model: QUANTUM_MODEL,
-    timestamp: new Date().toISOString(),
+
+    service:
+      "Quantum Chat API",
+
+    methods: [
+      "GET",
+      "POST",
+    ],
+
+    model:
+      QUANTUM_MODEL,
+
+    timestamp:
+      new Date().toISOString(),
   });
 }
 
 /* =========================================================
-   SETTINGS
+   USER SETTINGS
 ========================================================= */
 
 async function getUserSettings(
   userId: string
 ) {
   try {
-    const client = await clientPromise;
+    const client =
+      await clientPromise;
 
-    const db = client.db(
-      process.env.MONGODB_DB || "quantum"
-    );
+    const db =
+      client.db(
+        process.env.MONGODB_DB ||
+          "quantum"
+      );
 
-    const settings = await db
-      .collection("userSettings")
-      .findOne({ userId });
+    const stored =
+      await db
+        .collection(
+          "userSettings"
+        )
+        .findOne({
+          userId,
+        });
 
-    if (!settings) {
+    if (!stored) {
       return DEFAULT_QUANTUM_SETTINGS;
     }
 
     return sanitizeQuantumSettings(
-      settings as Partial<QuantumSettings>
+      stored as unknown as Partial<typeof DEFAULT_QUANTUM_SETTINGS>
     );
   } catch (error) {
     console.error(
@@ -93,28 +148,37 @@ function buildHistory(
   history: ClientMessage[],
   compact = false
 ) {
-  const messageLimit = compact
-    ? 2
-    : MAX_HISTORY_MESSAGES;
+  const count =
+    compact
+      ? 2
+      : MAX_HISTORY_MESSAGES;
 
-  const characterLimit = compact
-    ? 800
-    : MAX_HISTORY_CHARS;
+  const chars =
+    compact
+      ? 800
+      : MAX_HISTORY_CHARS;
 
   return history
     .filter(
       (item) =>
-        item.role === "user" ||
-        item.role === "assistant"
+        item.role ===
+          "user" ||
+        item.role ===
+          "assistant"
     )
-    .slice(-messageLimit)
-    .map((item) => ({
-      role: item.role,
-      content: item.content.slice(
-        0,
-        characterLimit
-      ),
-    }));
+    .slice(-count)
+    .map(
+      (item) => ({
+        role:
+          item.role,
+
+        content:
+          item.content.slice(
+            0,
+            chars
+          ),
+      })
+    );
 }
 
 /* =========================================================
@@ -130,18 +194,21 @@ function buildResearchContext(
   extractedContent?: string,
   compact = false
 ) {
-  const resultCount = compact
-    ? 2
-    : MAX_RESEARCH_RESULTS;
+  const count =
+    compact
+      ? 2
+      : MAX_RESEARCH_RESULTS;
 
-  const contentLimit = compact
-    ? 450
-    : MAX_RESEARCH_CHARS;
+  const chars =
+    compact
+      ? 450
+      : MAX_RESEARCH_CHARS;
 
-  const sources = results
-    .slice(0, resultCount)
-    .map(
-      (result, index) => `
+  const sources =
+    results
+      .slice(0, count)
+      .map(
+        (result, index) => `
 SOURCE ${index + 1}
 
 TITLE:
@@ -151,27 +218,36 @@ URL:
 ${result.url || ""}
 
 CONTENT:
-${(result.content || "").slice(
+${(
+  result.content ||
+  ""
+).slice(
   0,
-  contentLimit
+  chars
 )}
 `
-    )
-    .join("\n");
+      )
+      .join("\n");
 
-  const page = extractedContent
-    ? `
+  const page =
+    extractedContent
+      ? `
 
 DIRECT PAGE CONTENT:
 
 ${extractedContent.slice(
   0,
-  compact ? 2500 : MAX_PAGE_CHARS
+  compact
+    ? 2500
+    : MAX_PAGE_CHARS
 )}
 `
-    : "";
+      : "";
 
-  return sources + page;
+  return (
+    sources +
+    page
+  );
 }
 
 /* =========================================================
@@ -184,24 +260,33 @@ async function createGroqStream(
       | "system"
       | "user"
       | "assistant";
+
     content: string;
   }>
 ) {
-  return groq.chat.completions.create({
-    model: QUANTUM_MODEL,
+  return groq.chat.completions.create(
+    {
+      model:
+        QUANTUM_MODEL,
 
-    messages,
+      messages,
 
-    stream: true,
+      stream: true,
 
-    temperature: 0.25,
+      temperature:
+        0.25,
 
-    max_completion_tokens: 4000,
-  });
+      /*
+       * Your requested maximum.
+       */
+      max_completion_tokens:
+        3500,
+    }
+  );
 }
 
 /* =========================================================
-   ERROR DETECTION
+   OVERSIZE DETECTION
 ========================================================= */
 
 function isOversizeError(
@@ -216,11 +301,145 @@ function isOversizeError(
     text.toLowerCase();
 
   return (
-    lower.includes("request too large") ||
-    lower.includes("too many tokens") ||
-    lower.includes("token limit") ||
-    lower.includes("context")
+    lower.includes(
+      "request too large"
+    ) ||
+    lower.includes(
+      "too many tokens"
+    ) ||
+    lower.includes(
+      "token limit"
+    ) ||
+    lower.includes(
+      "context"
+    )
   );
+}
+
+/* =========================================================
+   PARSE REQUEST
+========================================================= */
+
+async function parseRequest(
+  request: NextRequest
+) {
+  const contentType =
+    request.headers.get(
+      "content-type"
+    ) || "";
+
+  /*
+   * ==========================================
+   * MULTIPART
+   * ==========================================
+   */
+
+  if (
+    contentType.includes(
+      "multipart/form-data"
+    )
+  ) {
+    const formData =
+      await request.formData();
+
+    const message =
+      String(
+        formData.get(
+          "message"
+        ) || ""
+      ).trim();
+
+    const conversationIdRaw =
+      String(
+        formData.get(
+          "conversationId"
+        ) || ""
+      ).trim();
+
+    const conversationId =
+      conversationIdRaw ||
+      null;
+
+    let history: ClientMessage[] =
+      [];
+
+    const historyRaw =
+      String(
+        formData.get(
+          "history"
+        ) || "[]"
+      );
+
+    try {
+      const parsed =
+        JSON.parse(
+          historyRaw
+        );
+
+      if (
+        Array.isArray(parsed)
+      ) {
+        history = parsed;
+      }
+    } catch {
+      history = [];
+    }
+
+    const uploadedFiles =
+      formData
+        .getAll("files")
+        .filter(
+          (
+            item
+          ): item is File =>
+            item instanceof File &&
+            item.size > 0
+        );
+
+    return {
+      message,
+
+      conversationId,
+
+      history,
+
+      files:
+        uploadedFiles.slice(
+          0,
+          MAX_FILES_PER_REQUEST
+        ),
+    };
+  }
+
+  /*
+   * ==========================================
+   * JSON
+   * ==========================================
+   */
+
+  const body =
+    await request.json();
+
+  return {
+    message:
+      String(
+        body?.message || ""
+      ).trim(),
+
+    conversationId:
+      body?.conversationId ||
+      null,
+
+    history:
+      Array.isArray(
+        body?.history
+      )
+        ? body.history
+        : [],
+
+    files:
+      [] as File[],
+  };
 }
 
 /* =========================================================
@@ -230,10 +449,12 @@ function isOversizeError(
 export async function POST(
   request: NextRequest
 ) {
-  const encoder = new TextEncoder();
+  const encoder =
+    new TextEncoder();
 
   const sendEvent = (
-    controller: ReadableStreamDefaultController,
+    controller:
+      ReadableStreamDefaultController,
     payload: unknown
   ) => {
     controller.enqueue(
@@ -246,16 +467,19 @@ export async function POST(
   };
 
   try {
-    /* =====================================================
+    /* ==========================================
        AUTH
-    ===================================================== */
+    ========================================== */
 
     const {
       isAuthenticated,
       userId,
     } = await auth();
 
-    if (!isAuthenticated || !userId) {
+    if (
+      !isAuthenticated ||
+      !userId
+    ) {
       return Response.json(
         {
           error:
@@ -267,23 +491,27 @@ export async function POST(
       );
     }
 
-    /* =====================================================
-       BODY
-    ===================================================== */
+    /* ==========================================
+       PARSE REQUEST
+    ========================================== */
 
-    let body: {
-      message?: string;
-      conversationId?: string | null;
-      history?: ClientMessage[];
-    };
+    let parsed;
 
     try {
-      body = await request.json();
-    } catch {
+      parsed =
+        await parseRequest(
+          request
+        );
+    } catch (error) {
+      console.error(
+        "REQUEST PARSE ERROR:",
+        error
+      );
+
       return Response.json(
         {
           error:
-            "Invalid JSON request.",
+            "Quantum could not read the request.",
         },
         {
           status: 400,
@@ -291,17 +519,12 @@ export async function POST(
       );
     }
 
-    const message =
-      String(body.message || "").trim();
-
-    const conversationId =
-      body.conversationId || null;
-
-    const history = Array.isArray(
-      body.history
-    )
-      ? body.history
-      : [];
+    const {
+      message,
+      conversationId,
+      history,
+      files,
+    } = parsed;
 
     if (!message) {
       return Response.json(
@@ -315,47 +538,79 @@ export async function POST(
       );
     }
 
-    /* =====================================================
-       USER SETTINGS
-    ===================================================== */
+    /* ==========================================
+       SETTINGS
+    ========================================== */
 
     const settings =
       await getUserSettings(
         userId
       );
 
-    /* =====================================================
-       SEARCH DECISION
-    ===================================================== */
+    /* ==========================================
+       FILE EXTRACTION
+    ========================================== */
+
+    const extractedFiles: ExtractedFile[] = [];
+
+    const fileErrors: {
+      name: string;
+      error: string;
+    }[] = [];
+
+    for (
+      const file of files
+    ) {
+      try {
+        const extracted =
+          await extractFile(
+            file
+          );
+
+        extractedFiles.push(
+          extracted
+        );
+      } catch (error) {
+        fileErrors.push({
+          name:
+            file.name,
+
+          error:
+            error instanceof
+            Error
+              ? error.message
+              : "Could not read file.",
+        });
+      }
+    }
+
+    const fileContext =
+      buildFileContext(
+        extractedFiles
+      );
+
+    const hasFiles =
+      extractedFiles.length >
+      0;
+
+    /* ==========================================
+       SEARCH
+    ========================================== */
 
     const automaticSearch =
-      shouldSearch(message);
+      shouldSearch(
+        message
+      );
 
-    let needsSearch =
-      automaticSearch;
-
-    if (
+    const needsSearch =
       settings.searchMode ===
       "never"
-    ) {
-      needsSearch = false;
-    }
+        ? false
+        : automaticSearch;
 
-    /*
-     * "always" means all substantive messages
-     * are searched. Greetings still remain local.
-     */
-    if (
-      settings.searchMode ===
-      "always"
-    ) {
-      needsSearch =
-        automaticSearch;
-    }
-
-    /* =====================================================
+    /* ==========================================
        STREAM
-    ===================================================== */
+    ========================================== */
 
     const stream =
       new ReadableStream({
@@ -373,25 +628,70 @@ export async function POST(
             | null = null;
 
           try {
-            /* =============================================
-               INITIAL STATUS
-            ============================================= */
+            /* ========================================
+               FILE STATUS
+            ======================================== */
+
+            if (
+              hasFiles ||
+              fileErrors.length
+            ) {
+              sendEvent(
+                controller,
+                {
+                  type:
+                    "files",
+
+                  files:
+                    extractedFiles.map(
+                      (
+                        file
+                      ) => ({
+                        name:
+                          file.name,
+
+                        size:
+                          file.size,
+
+                        type:
+                          file.type,
+
+                        truncated:
+                          file.truncated,
+                      })
+                    ),
+
+                  errors:
+                    fileErrors,
+                }
+              );
+            }
+
+            /* ========================================
+               SEARCH STATUS
+            ======================================== */
 
             sendEvent(
               controller,
               {
                 type: "status",
-                status: needsSearch
-                  ? "searching"
-                  : "thinking",
+
+                status:
+                  needsSearch
+                    ? "searching"
+                    : hasFiles
+                    ? "analyzing-files"
+                    : "thinking",
               }
             );
 
-            /* =============================================
-               TAVILY
-            ============================================= */
+            /* ========================================
+               WEB RESEARCH
+            ======================================== */
 
-            if (needsSearch) {
+            if (
+              needsSearch
+            ) {
               try {
                 researchData =
                   await researchWeb(
@@ -401,7 +701,8 @@ export async function POST(
                 sendEvent(
                   controller,
                   {
-                    type: "research",
+                    type:
+                      "research",
 
                     results:
                       settings.showResearch
@@ -420,7 +721,11 @@ export async function POST(
                   controller,
                   {
                     type: "status",
-                    status: "analyzing",
+
+                    status:
+                      hasFiles
+                        ? "analyzing-files"
+                        : "analyzing",
                   }
                 );
               } catch (error) {
@@ -429,26 +734,14 @@ export async function POST(
                   error
                 );
 
-                /*
-                 * Search failure should not kill
-                 * the entire AI request.
-                 */
-
-                researchData = null;
-
-                sendEvent(
-                  controller,
-                  {
-                    type: "status",
-                    status: "thinking",
-                  }
-                );
+                researchData =
+                  null;
               }
             }
 
-            /* =============================================
-               SYSTEM PROMPT
-            ============================================= */
+            /* ========================================
+               SYSTEM
+            ======================================== */
 
             const systemPrompt =
               buildQuantumSystemPrompt({
@@ -460,11 +753,33 @@ export async function POST(
                 settings,
               });
 
-            /* =============================================
+            /* ========================================
                USER PROMPT
-            ============================================= */
+            ======================================== */
 
-            let userPrompt = message;
+            let userPrompt =
+              message;
+
+            if (hasFiles) {
+              userPrompt = `
+USER REQUEST:
+
+${message}
+
+ATTACHED FILE CONTENT:
+
+${fileContext}
+
+Use the attached files as primary source material
+for file-related questions.
+
+Do not invent information that is not present in
+the supplied file content.
+
+If a file was truncated, acknowledge that limitation
+when it matters.
+`;
+            }
 
             if (researchData) {
               const researchContext =
@@ -473,51 +788,51 @@ export async function POST(
                   researchData.extractedContent
                 );
 
-              userPrompt = `
-USER REQUEST:
-
-${message}
+              userPrompt += `
 
 LIVE WEB RESEARCH:
 
 ${researchContext}
 
-Use the supplied research where relevant.
+Use the web research when relevant.
 
 Cite useful sources as [1], [2], [3].
 
-Do not invent information that is not supported
-by the supplied research.
+Do not invent facts that are not supported by
+the supplied research.
 `;
             }
 
-            /* =============================================
+            /* ========================================
                MODEL MESSAGES
-            ============================================= */
+            ======================================== */
 
-            let modelMessages = [
-              {
-                role:
-                  "system" as const,
+            let modelMessages =
+              [
+                {
+                  role:
+                    "system" as const,
 
-                content:
-                  systemPrompt,
-              },
+                  content:
+                    systemPrompt,
+                },
 
-              ...buildHistory(history),
+                ...buildHistory(
+                  history
+                ),
 
-              {
-                role:
-                  "user" as const,
+                {
+                  role:
+                    "user" as const,
 
-                content:
-                  userPrompt,
-              },
-            ];
+                  content:
+                    userPrompt,
+                },
+              ];
 
-            /* =============================================
-               GROQ REQUEST
-            ============================================= */
+            /* ========================================
+               GROQ
+            ======================================== */
 
             let groqStream;
 
@@ -526,12 +841,9 @@ by the supplied research.
                 await createGroqStream(
                   modelMessages
                 );
-            } catch (firstError) {
-              /*
-               * Automatically retry with a smaller
-               * context if the request itself is too big.
-               */
-
+            } catch (
+              firstError
+            ) {
               if (
                 !isOversizeError(
                   firstError
@@ -540,9 +852,9 @@ by the supplied research.
                 throw firstError;
               }
 
-              console.warn(
-                "Quantum context was too large; retrying compact."
-              );
+              /*
+               * Compact retry.
+               */
 
               const compactResearch =
                 researchData
@@ -553,43 +865,79 @@ by the supplied research.
                     )
                   : "";
 
-              const compactPrompt =
-                researchData
-                  ? `
+              /*
+               * Rebuild file context even smaller.
+               */
+              const compactFileContext =
+                extractedFiles
+                  .map(
+                    (file) =>
+                      `
+FILE:
+${file.name}
+
+CONTENT:
+${file.text.slice(
+  0,
+  2500
+)}
+`
+                  )
+                  .join(
+                    "\n"
+                  );
+
+              const compactPrompt = `
 USER REQUEST:
 
 ${message}
 
-COMPACT RESEARCH:
+${
+  compactFileContext
+    ? `
+ATTACHED FILES:
+
+${compactFileContext}
+`
+    : ""
+}
+
+${
+  compactResearch
+    ? `
+LIVE RESEARCH:
 
 ${compactResearch}
+`
+    : ""
+}
 
 Give a complete but focused answer.
-`
-                  : message;
+`;
 
-              modelMessages = [
-                {
-                  role:
-                    "system",
+              modelMessages =
+                [
+                  {
+                    role:
+                      "system",
 
-                  content:
-                    systemPrompt,
-                },
+                    content:
+                      systemPrompt,
+                  },
 
-                ...buildHistory(
-                  history,
-                  true
-                ),
+                  ...buildHistory(
+                    history,
+                    true
+                  ),
 
-                {
-                  role:
-                    "user",
+                  {
+                    role:
+                      "user",
 
-                  content:
-                    compactPrompt,
-                },
-              ];
+                    content:
+                      compactPrompt,
+                  },
+                ];
 
               try {
                 groqStream =
@@ -624,50 +972,57 @@ Give a complete but focused answer.
               }
             }
 
-            /* =============================================
-               STREAM ANSWER
-            ============================================= */
+            /* ========================================
+               STREAM
+            ======================================== */
 
             for await (
-              const chunk of groqStream
+              const chunk of
+                groqStream
             ) {
               const text =
-                chunk.choices[0]
+                chunk
+                  .choices[0]
                   ?.delta
-                  ?.content || "";
+                  ?.content ||
+                "";
 
               if (!text) {
                 continue;
               }
 
-              fullAnswer += text;
+              fullAnswer +=
+                text;
 
               sendEvent(
                 controller,
                 {
-                  type: "chunk",
+                  type:
+                    "chunk",
+
                   text,
                 }
               );
             }
 
-            /* =============================================
-               MONGODB
-            ============================================= */
+            /* ========================================
+               SAVE
+            ======================================== */
 
             const client =
               await clientPromise;
 
-            const db = client.db(
-              process.env.MONGODB_DB ||
-                "quantum"
-            );
+            const db =
+              client.db(
+                process.env.MONGODB_DB ||
+                  "quantum"
+              );
 
             const researchItems =
-              researchData
-                ?.results || [];
+              researchData?.results ||
+              [];
 
-            const allSources =
+            const sourceItems =
               researchItems.map(
                 (result) => ({
                   title:
@@ -683,31 +1038,64 @@ Give a complete but focused answer.
 
             const sources =
               settings.showSources
-                ? allSources
+                ? sourceItems
                 : [];
 
             const userMessage = {
-              role: "user",
-              content: message,
-              createdAt: new Date(),
+              role:
+                "user",
+
+              content:
+                message,
+
+              attachments:
+                extractedFiles.map(
+                  (file) => ({
+                    name:
+                      file.name,
+
+                    size:
+                      file.size,
+
+                    type:
+                      file.type,
+
+                    truncated:
+                      file.truncated,
+                  })
+                ),
+
+              createdAt:
+                new Date(),
             };
 
-            const assistantMessage = {
-              role: "assistant",
-              content: fullAnswer,
-              sources,
-              research: researchItems,
-              createdAt: new Date(),
-            };
+            const assistantMessage =
+              {
+                role:
+                  "assistant",
+
+                content:
+                  fullAnswer,
+
+                sources,
+
+                research:
+                  researchItems,
+
+                createdAt:
+                  new Date(),
+              };
 
             let savedConversationId =
               conversationId;
 
-            /* =============================================
-               EXISTING CHAT
-            ============================================= */
+            /* ========================================
+               EXISTING CONVERSATION
+            ======================================== */
 
-            if (conversationId) {
+            if (
+              conversationId
+            ) {
               if (
                 !ObjectId.isValid(
                   conversationId
@@ -735,12 +1123,13 @@ Give a complete but focused answer.
 
                     {
                       $push: {
-                        messages: {
-                          $each: [
-                            userMessage,
-                            assistantMessage,
-                          ],
-                        },
+                        messages:
+                          {
+                            $each: [
+                              userMessage,
+                              assistantMessage,
+                            ],
+                          },
                       } as any,
 
                       $set: {
@@ -759,9 +1148,9 @@ Give a complete but focused answer.
                 );
               }
             } else {
-              /* ===========================================
-                 NEW CHAT
-              =========================================== */
+              /* ======================================
+                 NEW CONVERSATION
+              ====================================== */
 
               const title =
                 await generateConversationTitle(
@@ -800,14 +1189,15 @@ Give a complete but focused answer.
                 created.insertedId.toString();
             }
 
-            /* =============================================
-               COMPLETE
-            ============================================= */
+            /* ========================================
+               DONE
+            ======================================== */
 
             sendEvent(
               controller,
               {
-                type: "done",
+                type:
+                  "done",
 
                 conversationId:
                   savedConversationId,
@@ -816,6 +1206,23 @@ Give a complete but focused answer.
                   needsSearch,
 
                 sources,
+
+                files:
+                  extractedFiles.map(
+                    (file) => ({
+                      name:
+                        file.name,
+
+                      size:
+                        file.size,
+
+                      type:
+                        file.type,
+
+                      truncated:
+                        file.truncated,
+                    })
+                  ),
               }
             );
 
@@ -829,7 +1236,8 @@ Give a complete but focused answer.
             sendEvent(
               controller,
               {
-                type: "error",
+                type:
+                  "error",
 
                 error:
                   error instanceof
@@ -871,7 +1279,8 @@ Give a complete but focused answer.
     return Response.json(
       {
         error:
-          error instanceof Error
+          error instanceof
+          Error
             ? error.message
             : "Quantum failed.",
       },

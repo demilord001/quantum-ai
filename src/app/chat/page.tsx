@@ -4,6 +4,9 @@ import {
 } from "@clerk/nextjs/server";
 
 import QuantumChat from "@/components/quantum-chat";
+import {
+  DEFAULT_QUANTUM_SETTINGS,
+} from "@/lib/quantum-settings";
 
 export default async function ChatPage() {
   await auth.protect();
@@ -24,6 +27,7 @@ export default async function ChatPage() {
     <main className="h-screen w-full overflow-hidden bg-[#020617] text-white">
       <QuantumChat
         firstName={firstName}
+        initialSettings={DEFAULT_QUANTUM_SETTINGS}
       />
     </main>
   );
